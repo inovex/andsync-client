@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project>
+	<target name="-pre-compile">
+		<echo level="info">Compile and copy andsync-commons.jar...</echo>
+		<ant dir="../andsync-commons" target="jar"/>
+		<move file="../andsync-commons/dist/andsync-commons.jar" todir="libs"/>
+		<echo level="info">Compile and copy jMOM.jar...</echo>
+		<ant dir="../jMOM" target="jar"/>
+		<move file="../jMOM/dist/jMOM.jar" todir="libs"/>
+	</target>
+</project>
