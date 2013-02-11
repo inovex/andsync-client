@@ -17,7 +17,7 @@ package de.inovex.andsync.manager;
 
 import com.mongodb.DBObject;
 import com.mongodb.DBRef;
-import de.inovex.andsync.lucene.Cache;
+import de.inovex.andsync.cache.Cache;
 import de.inovex.jmom.FieldList;
 import de.inovex.jmom.Storage;
 import java.util.Collection;
@@ -27,36 +27,56 @@ import org.bson.types.ObjectId;
  *
  * @author Tim Roes <tim.roes@inovex.de>
  */
-public class CacheStorageHandler implements Storage.DBHandler {
+class CacheStorageHandler implements Storage.DBHandler {
 	
 	private Cache mCache;
 	
 	public CacheStorageHandler(Cache cache) {
+		assert cache != null;
 		this.mCache = cache;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 */
 	public void onSave(String string, DBObject dbo) {
-		throw new UnsupportedOperationException("Not supported yet.");
+		/**
+		 * Save isn't done by the cache Storage, but by the REST storage. This is needed, because
+		 * the REST storage generates the ObjectIds for new objects, but the cache needs this id
+		 * to save an object. The option to create the Id outside of both storages, doesn't work,
+		 * since the REST storage need to detect, if an object has already been send to the server
+		 * or if it's new. This is determined by checking if the object has already an id.
+		 */
+		assert false;
 	}
 
-	public DBObject onGetFirst(String string, FieldList fl) {
-		throw new UnsupportedOperationException("Not supported yet.");
+	/**
+	 * {@inheritDoc}
+	 */
+	public Collection<DBObject> onGet(String collection, FieldList fl) {
+		Collection<DBObject> dbos = mCache.getAll(collection);
+		return dbos;
 	}
 
-	public Collection<DBObject> onGet(String string, FieldList fl) {
-		throw new UnsupportedOperationException("Not supported yet.");
+	/**
+	 * {@inheritDoc}
+	 */
+	public DBRef onCreateRef(String collection, DBObject dbo) {
+		return new DBRef(null, collection, dbo.get("_id"));
 	}
 
-	public DBRef onCreateRef(String string, DBObject dbo) {
-		throw new UnsupportedOperationException("Not supported yet.");
-	}
-
+	/**
+	 * {@inheritDoc}
+	 */
 	public DBObject onFetchRef(DBRef dbref) {
-		throw new UnsupportedOperationException("Not supported yet.");
+		return mCache.getById((ObjectId)dbref.getId());
 	}
 
-	public void onDelete(String string, ObjectId oi) {
-		throw new UnsupportedOperationException("Not supported yet.");
+	/**
+	 * {@inheritDoc} 
+	 */
+	public void onDelete(String collection, ObjectId objectId) {
+		mCache.delete(collection, objectId);
 	}
 	
 }

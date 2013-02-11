@@ -15,6 +15,7 @@
  */
 package de.inovex.andsync.manager;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -23,6 +24,26 @@ import java.util.List;
  */
 public abstract class ObjectListener {
 	
-	public abstract <T> void update(Class<T> clazz, List<T> objects);
+
+	/**
+	 * Gets called whenever a new object has been added. Will get the object and its class as parameters.
+	 * Override this to handle the creation of an object yourself. If you don't override this method,
+	 * it will call {@link #onUpdate(java.lang.Class, java.util.List)} with a list solely containing
+	 * the created object.
+	 * 
+	 * @param <T> The type of the object, that was created.
+	 * @param clazz The {@link Class} object of the type.
+	 * @param obj The object, that has been created.
+	 */
+	@SuppressWarnings("unchecked")
+	public <T> void onCreate(Class<T> clazz, T obj) {
+		List<T> list = new ArrayList<T>(1);
+		list.add(obj);
+		onUpdate((Class<T>)obj.getClass(), list);
+	}
+	
+	public abstract <T> void onUpdate(Class<T> clazz, List<T> objects);
+	
+	public abstract void onDelete(Object obj);
 	
 }

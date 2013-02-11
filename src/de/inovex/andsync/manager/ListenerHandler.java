@@ -65,12 +65,12 @@ class ListenerHandler {
 	
 	public <T> void updateListener(Class<T> clazz, List<T> objects) {
 		for(ObjectListener l : globalListeners) {
-			l.update(clazz, objects);
+			l.onUpdate(clazz, objects);
 		}
 		
 		List<ObjectListener> list = listeners.get(clazz);
 		for(ObjectListener l : list) {
-			l.update(clazz, objects);
+			l.onUpdate(clazz, objects);
 		}
 	}
 	

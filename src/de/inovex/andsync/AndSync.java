@@ -20,25 +20,24 @@ import de.inovex.andsync.manager.ObjectManager;
 import java.util.List;
 
 /**
+ * Servers as interface to AndSync. Use the methods of this class, to save, update or delete
+ * objects. You need to call {@link #initialize(de.inovex.andsync.Config)} one time before using 
+ * any other methods.
  * 
+ * This class solely serves as a facade for the {@link ObjectManager} class. You should always use
+ * this class to use AndSync.
  * 
  * @author Tim Roes <tim.roes@inovex.de>
  */
 public class AndSync {
 
 	private static ObjectManager sManager;
-	private static Config sConfig;
-	
-	public static Config getConfig() {
-		return sConfig;
-	}
 	
 	public static void initialize(Config config) {
-		if(sConfig != null) {
-			throw new IllegalStateException("Cannot initialize AndSync again. Config already exists.");
+		if(sManager != null) {
+			throw new IllegalStateException("Cannot initialize AndSync again.");
 		}
-		sConfig = config;
-		sManager = new ObjectManager();
+		sManager = new ObjectManager(config);
 	}
 	
 	/**
@@ -47,21 +46,20 @@ public class AndSync {
 	 * @throws IllegalStateException Will be thrown, if AndSync hasn't been initialized.
 	 */
 	private static void checkState() {
-		if(sConfig == null) {
+		if(sManager == null) {
 			throw new IllegalStateException("AndSync.initialize(..) has to be called before using AndSync.");
 		}
+	}
+	
+	public static Config getConfig() {
+		checkState();
+		return sManager.getConfig();
 	}
 	
 	public static void save(Object obj) {
 		checkState();
 		sManager.save(obj);
 	}
-	
-	public static <T> T findFirst(Class<T> clazz) {
-		checkState();
-		return sManager.findFirst(clazz);
-	}
-	
 
 	public static <T> List<T> findAll(Class<T> clazz) {
 		checkState();

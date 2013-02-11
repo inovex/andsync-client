@@ -36,4 +36,6 @@ public class AndSyncApplication extends Application {
 		return sApplicationContext;
 	}
 	
+	
+	
 }

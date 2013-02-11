@@ -15,6 +15,7 @@
  */
 package de.inovex.andsync;
 
+import java.net.MalformedURLException;
 import java.net.URL;
 
 /**
@@ -24,14 +25,31 @@ import java.net.URL;
 public class Config {
 	
 	private URL mUrl;
+	
+	private Config(Builder builder) {
+		this.mUrl = builder.mUrl;
+	}
 
 	public URL getUrl() {
 		return mUrl;
 	}
-
-	public Config setUrl(URL url) {
-		this.mUrl = url;
-		return this;
+	
+	public static class Builder {
+		
+		private URL mUrl;
+		
+		public Builder(URL url) {
+			this.mUrl = url;
+		}
+		
+		public Builder(String url) throws MalformedURLException {
+			this.mUrl = new URL(url);
+		}
+			
+		public Config build() {
+			return new Config(this);
+		}
+		
 	}
 	
 }
