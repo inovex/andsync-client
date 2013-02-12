@@ -52,14 +52,14 @@ import static de.inovex.andsync.Constants.*;
  */
 class RestStorageHandler implements Storage.DBHandler {
 
-	private RestClient mRest;
+	private RepeatingRestClient mRest;
 	private CallCollector mCallCollector;
 	private Cache mCache;
 
 	public RestStorageHandler(RestClient restClient, Cache cache) {
 		assert restClient != null && cache != null;
 		this.mCallCollector = new CallCollector();
-		this.mRest = restClient;
+		this.mRest = new RepeatingRestClient(restClient);
 		this.mCache = cache;
 	}
 
@@ -81,21 +81,12 @@ class RestStorageHandler implements Storage.DBHandler {
 
 	private void updateObject(final String collection, final DBObject dbo) {
 		final byte[] data = BsonConverter.toByteArrayList(dbo);
-		try {
-			mRest.post(data, REST_OBJECT_PATH, collection);
-		} catch (RestException ex) {
-			Logger.getLogger(ObjectManager.class.getName()).log(Level.SEVERE, null, ex);
-		}
+		mRest.post(data, REST_OBJECT_PATH, collection);
 	}
 
 	private void newObject(final String collection, final DBObject dbo) {
-
 		final byte[] data = BsonConverter.toByteArrayList(dbo);
-		try {
-			mRest.put(data, REST_OBJECT_PATH, collection);
-		} catch (RestException ex) {
-			Logger.getLogger(ObjectManager.class.getName()).log(Level.SEVERE, null, ex);
-		}
+		mRest.put(data, REST_OBJECT_PATH, collection);
 	}
 
 	public Collection<DBObject> onGet(final String collection, final FieldList fl) {
@@ -103,10 +94,10 @@ class RestStorageHandler implements Storage.DBHandler {
 		long nano = System.currentTimeMillis();
 
 		RestResponse response;
-		try {
-			response = mRest.get(REST_OBJECT_PATH, collection);
-		} catch (RestException ex) {
-			Logger.getLogger(ObjectManager.class.getName()).log(Level.SEVERE, null, ex);
+
+		response = mRest.get(REST_OBJECT_PATH, collection);
+
+		if (response.data == null) {
 			return null;
 		}
 
@@ -119,7 +110,7 @@ class RestStorageHandler implements Storage.DBHandler {
 
 		System.out.println("-- End Caching objects --");
 
-		Log.w("TOSLOW", String.format("-- Elapsed Time [Caching objects (without references)]" + (System.currentTimeMillis() - nano) / 1000.0 + "s -- "));
+		Log.w("TOSLOW", String.format("-- Elapsed Time [Caching objects (without references)] " + (System.currentTimeMillis() - nano) / 1000.0 + "s -- "));
 
 		return objects;
 
@@ -142,13 +133,107 @@ class RestStorageHandler implements Storage.DBHandler {
 	}
 
 	public void onDelete(String collection, ObjectId oi) {
-		try {
-			mRest.delete(REST_OBJECT_PATH, collection, oi.toString());
-		} catch (RestException ex) {
-			Logger.getLogger(ObjectManager.class.getName()).log(Level.SEVERE, null, ex);
+		mRest.delete(REST_OBJECT_PATH, collection, oi.toString());
+	}
+
+	private interface RestCall {
+
+		RestResponse doCall() throws RestException;
+	}
+
+	/**
+	 * Keeps retrying REST calls to the server if connection fails.
+	 */
+	private class RepeatingRestClient extends RestClient {
+
+		/**
+		 * The wrapped {@link RestClient} to use for communication.
+		 */
+		private RestClient mWrapped;
+		/**
+		 * The maximum delay in milliseconds after trying a call again.
+		 */
+		private final long MAX_RETRY_TIME = 60000;
+		private final int MAX_RETRIES = 10;
+		
+		private int id = 1;
+
+		public RepeatingRestClient(RestClient wrappedClient) {
+			assert mWrapped != null;
+			mWrapped = wrappedClient;
+		}
+
+		@Override
+		public RestResponse get(final String... path) {
+			return call(new RestCall() {
+				public RestResponse doCall() throws RestException {
+					return mWrapped.get(path);
+				}
+			});
+		}
+
+		@Override
+		public RestResponse delete(final String... path) {
+			return call(new RestCall() {
+				public RestResponse doCall() throws RestException {
+					return mWrapped.delete(path);
+				}
+			});
+		}
+
+		@Override
+		public RestResponse put(final byte[] data, final String... path) {
+			return call(new RestCall() {
+				public RestResponse doCall() throws RestException {
+					return mWrapped.put(data, path);
+				}
+			});
+		}
+
+		@Override
+		public RestResponse post(final byte[] data, final String... path) {
+			return call(new RestCall() {
+				public RestResponse doCall() throws RestException {
+					return mWrapped.post(data, path);
+				}
+			});
+		}
+
+		/**
+		 * Retry the given call until it succeeds, or the maximum limit of tries has been exceeded.
+		 * Double the delay every time a call fails, until the {@link #MAX_RETRY_TIME maximum
+		 * time limit} has been reached.
+		 * 
+		 * @param call The call to repeat.
+		 * @return The response from that call.
+		 */
+		private RestResponse call(RestCall call) {
+			RestResponse response = null;
+			long wait = 2000;
+			int retry = 0;
+			do {
+				try {
+					response = call.doCall();
+				} catch (RestException ex) {
+					Log.d(LOG_TAG, String.format("Could not make REST call. Trying again in %d ms. "
+							+ "[Caused by %s]", wait, ex.getCause().getMessage()));
+					try {
+						Thread.sleep(wait);
+						wait = Math.min(wait * 2, MAX_RETRY_TIME);
+					} catch (InterruptedException ex1) {
+						Logger.getLogger(RestStorageHandler.class.getName()).log(Level.SEVERE, null, ex1);
+					}
+				}
+				retry++;
+			} while ((response == null || response.code != 200) && retry < MAX_RETRIES);
+			return response;
 		}
 	}
 
+	/**
+	 * Collects different calls to the REST interface and try to minimize the required HTTP connections,
+	 * by bunching calls together.
+	 */
 	private class CallCollector {
 
 		/**
@@ -160,7 +245,6 @@ class RestStorageHandler implements Storage.DBHandler {
 		 * calls are pending.
 		 */
 		private final static int CALL_COLLECT_TIME_LIMIT = 3;
-
 		/**
 		 * A list of {@link ObjectId} that are waiting to be fetched from server. Separated by their
 		 * collection.
@@ -170,7 +254,6 @@ class RestStorageHandler implements Storage.DBHandler {
 		 * The {@link DBObject DBObjects} returned from the server for each {@link ObjectId}.
 		 */
 		private Map<ObjectId, DBObject> mResults = new ConcurrentHashMap<ObjectId, DBObject>();
-
 		/**
 		 * The waiting locks for each call made. Each call holds a list of locks for all pending calls 
 		 * to this {@link ObjectId}.
@@ -197,8 +280,6 @@ class RestStorageHandler implements Storage.DBHandler {
 		 * This lock is used when modifying the {@link #mResults results list}.
 		 */
 		private final Object mResultsLock = new Object();
-
-
 		private ScheduledFuture<?> mScheduled;
 		private final ScheduledExecutorService mExecutor = Executors.newSingleThreadScheduledExecutor(new NamedThreadFactory("Periodic AndSync Thread "));
 		private final Runnable mCheckForPendingCalls = new Runnable() {
@@ -213,9 +294,9 @@ class RestStorageHandler implements Storage.DBHandler {
 
 				// Check if any calls are left over, if so reschedule the periodic check, if not
 				// don't do any further periodic check.
-				synchronized(mSchedulerLock) {
+				synchronized (mSchedulerLock) {
 					if (hasPendingCalls()) {
-						mScheduled = mExecutor.schedule(mCheckForPendingCalls, CALL_COLLECT_TIME_LIMIT, 
+						mScheduled = mExecutor.schedule(mCheckForPendingCalls, CALL_COLLECT_TIME_LIMIT,
 								TimeUnit.SECONDS);
 					} else {
 						mScheduled = null;
@@ -260,7 +341,7 @@ class RestStorageHandler implements Storage.DBHandler {
 					mScheduled = mExecutor.schedule(mCheckForPendingCalls,
 							CALL_COLLECT_TIME_LIMIT, TimeUnit.SECONDS);
 				} else {
-					if(mScheduled.cancel(true)) {
+					if (mScheduled.cancel(true)) {
 						mScheduled = mExecutor.schedule(mCheckForPendingCalls, CALL_COLLECT_TIME_LIMIT, TimeUnit.SECONDS);
 					}
 				}
@@ -272,7 +353,7 @@ class RestStorageHandler implements Storage.DBHandler {
 				if (numPendingcalls(collection) >= CALL_COLLECT_LIMIT) {
 					doCall(collection);
 				}
-				
+
 				while (!mResults.containsKey(id)) {
 					try {
 						lockForId.wait(10000);
@@ -281,15 +362,15 @@ class RestStorageHandler implements Storage.DBHandler {
 						//Log.w("ANDSYNC", String.format("Thread got interrupted %s", Thread.currentThread().getId()));
 					}
 				}
-				
+
 				boolean removeObject = false;
-				synchronized(mLockCreationLock) {
+				synchronized (mLockCreationLock) {
 					mIdLocks.get(id).remove(lockForId);
-					if(mIdLocks.get(id) != null && mIdLocks.get(id).isEmpty()) {
+					if (mIdLocks.get(id) != null && mIdLocks.get(id).isEmpty()) {
 						mIdLocks.remove(id);
 						removeObject = true;
 					}
-					synchronized(mResultsLock) {
+					synchronized (mResultsLock) {
 						DBObject dbo = (removeObject) ? mResults.remove(id) : mResults.get(id);
 						return dbo;
 					}
@@ -309,9 +390,9 @@ class RestStorageHandler implements Storage.DBHandler {
 		}
 
 		private Object newLock(ObjectId id) {
-			synchronized(mLockCreationLock) {
+			synchronized (mLockCreationLock) {
 				Collection<Object> locksForId = mIdLocks.get(id);
-				if(locksForId == null) {
+				if (locksForId == null) {
 					locksForId = new ConcurrentLinkedQueue<Object>();
 					mIdLocks.put(id, locksForId);
 				}
@@ -341,40 +422,47 @@ class RestStorageHandler implements Storage.DBHandler {
 							keyList.add(id);
 						}
 
-						try {
-							RestResponse response = mRest.get(REST_OBJECT_PATH, collection,
-									Base64.encode(BsonConverter.toByteArray(keyList), 0));
+						RestResponse response = mRest.get(REST_OBJECT_PATH, collection,
+								Base64.encode(BsonConverter.toByteArray(keyList), 0));
 
-							BasicDBObject objects = (BasicDBObject) BsonConverter.fromBson(response.data);
+						if (response.code != 200) {
+							Log.w(LOG_TAG, String.format("Server returned error code %d.", response.code));
+							return;
+						}
 
-							for (Object o : objects.values()) {
+						BasicDBObject objects = (BasicDBObject) BsonConverter.fromBson(response.data);
 
-								if (!(o instanceof DBObject)) {
-									Log.w(LOG_TAG, "Received object from client wasn't a DBObject.");
-									continue;
-								}
+						if (objects == null) {
+							Log.w(LOG_TAG, "Received object list from server wasn't a valid BSON object.");
+							return;
+						}
 
-								DBObject dbo = (DBObject) o;
-								ObjectId id = (ObjectId) dbo.get(MONGO_ID);
+						for (Object o : objects.values()) {
 
-								synchronized(mResultsLock) {
-									mResults.put(id, dbo);
-								}
-								requestedIds.remove(id);
+							if (!(o instanceof DBObject)) {
+								Log.w(LOG_TAG, "Received object from server wasn't a DBObject.");
+								continue;
+							}
 
-								Collection<Object> locksForId = mIdLocks.get(id);
-								if(locksForId != null)
-								for(Object lock : locksForId) {
+							DBObject dbo = (DBObject) o;
+							ObjectId id = (ObjectId) dbo.get(MONGO_ID);
+
+							synchronized (mResultsLock) {
+								mResults.put(id, dbo);
+							}
+							requestedIds.remove(id);
+
+							Collection<Object> locksForId = mIdLocks.get(id);
+							if (locksForId != null) {
+								for (Object lock : locksForId) {
 									synchronized (lock) {
 										lock.notifyAll();
 									}
 								}
-
 							}
 
-						} catch (RestException ex) {
-							Logger.getLogger(RestStorageHandler.class.getName()).log(Level.SEVERE, null, ex);
 						}
+
 
 					}
 				}

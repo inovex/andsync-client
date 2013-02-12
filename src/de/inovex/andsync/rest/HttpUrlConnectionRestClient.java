@@ -84,9 +84,13 @@ class HttpUrlConnectionRestClient extends RestClient {
 		return call(Method.POST, data, path);
 	}
 	
-	private RestResponse call(Method method, byte[] data, String... path) throws RestException {
+	private RestResponse call(Method method, byte[] data, String... params) throws RestException {
 		
 		try {
+			
+			// Copy parameters to new string.
+			String[] path = new String[params.length];
+			System.arraycopy(params, 0, path, 0, path.length);
 			
 			for(int i = 0; i < path.length; i++) {
 				path[i] = URLEncoder.encode(path[i], UTF8);
