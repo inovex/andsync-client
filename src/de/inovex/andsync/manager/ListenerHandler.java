@@ -15,10 +15,11 @@
  */
 package de.inovex.andsync.manager;
 
-import java.util.HashMap;
-import java.util.LinkedList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
  *
@@ -26,8 +27,8 @@ import java.util.Map;
  */
 class ListenerHandler {
 	
-	private List<ObjectListener> globalListeners = new LinkedList<ObjectListener>();
-	private Map<Class<?>, List<ObjectListener>> listeners = new HashMap<Class<?>, List<ObjectListener>>();
+	private Collection<ObjectListener> globalListeners = new ConcurrentLinkedQueue<ObjectListener>();
+	private Map<Class<?>, Collection<ObjectListener>> listeners = new ConcurrentHashMap<Class<?>, Collection<ObjectListener>>();
 	
 	
 	/**
@@ -46,9 +47,9 @@ class ListenerHandler {
 			globalListeners.add(listener);
 		} else {
 			for(Class<?> clazz : classes) {
-				List<ObjectListener> l = listeners.get(clazz);
+				Collection<ObjectListener> l = listeners.get(clazz);
 				if(l == null) {
-					l = new LinkedList<ObjectListener>();
+					l = new ConcurrentLinkedQueue<ObjectListener>();
 				}
 				l.add(listener);
 				listeners.put(clazz, l);
@@ -58,7 +59,7 @@ class ListenerHandler {
 	
 	public void removeListener(ObjectListener listener) {
 		globalListeners.remove(listener);
-		for(List<ObjectListener> l : listeners.values()) {
+		for(Collection<ObjectListener> l : listeners.values()) {
 			l.remove(listener);
 		}
 	}
@@ -68,7 +69,8 @@ class ListenerHandler {
 			l.onUpdate(clazz, objects);
 		}
 		
-		List<ObjectListener> list = listeners.get(clazz);
+		Collection<ObjectListener> list = listeners.get(clazz);
+		if(list != null)
 		for(ObjectListener l : list) {
 			l.onUpdate(clazz, objects);
 		}

@@ -99,12 +99,6 @@ public class ObjectManager {
 	
 	public void save(final Object obj) {
 		
-		ObjectId id = mSharedStorageCache.getId(obj);
-		if(id == null) {
-			// If object is new, so we don't have any id yet, create one for it.
-			
-		}
-
 		Runnable r = new Runnable() {
 			public void run() {
 				mRestStorage.save(obj);
@@ -127,7 +121,7 @@ public class ObjectManager {
 				// Commit cache changes since we have not all objects from that fetch
 				mCache.commit();
 				// TODO: Remove time recording
-				Log.w("TOSLOW", "-- Elapsed Time [findAll REST] " + (System.currentTimeMillis() - milli)/1000.0 + "s --");
+				Log.w("TOSLOW", "-- Elapsed Time [findAll REST] " + (System.currentTimeMillis() - milli)/1000.0 + "s -- Objects " + objs.size() + " --");
 				mListeners.updateListener(clazz, objs);
 			}
 		};

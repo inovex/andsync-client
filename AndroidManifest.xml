@@ -3,6 +3,7 @@
       package="de.inovex.andsync"
       android:versionCode="1"
       android:versionName="1.0">
+	<uses-sdk android:minSdkVersion="9"/>
 	<uses-permission android:name="android.permission.INTERNET"/>
 	<application>
 		<service android:name="de.inovex.andsync.ObjectService"></service>

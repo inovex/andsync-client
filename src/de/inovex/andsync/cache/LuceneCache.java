@@ -15,7 +15,6 @@
  */
 package de.inovex.andsync.cache;
 
-import com.mongodb.BasicDBObject;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.index.IndexReader;
@@ -34,7 +33,6 @@ import java.util.ArrayList;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexWriter;
-import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.NativeFSLockFactory;
@@ -126,6 +124,7 @@ public class LuceneCache implements Cache {
 	 */
 	@Override
 	public synchronized void put(String collection, DBObject dbo) {
+		if(dbo == null) return;
 		ObjectId id = (ObjectId)dbo.get(MONGO_ID);
 		if(id == null) {
 			throw new IllegalArgumentException("Cannot save object without an id.");
