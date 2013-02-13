@@ -43,7 +43,7 @@ public class CacheMock implements Cache {
 	public DBObject getById(ObjectId id) {
 		return null;
 	}
-	
+
 	/**
 	 * {@inheritDoc}
 	 */
@@ -59,6 +59,11 @@ public class CacheMock implements Cache {
 	 * {@inheritDoc}
 	 */
 	public void delete(String collection, ObjectId id) { }
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public void delete(String collection, long timestamp) {	}
 
 	/**
 	 * {@inheritDoc}

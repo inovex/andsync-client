@@ -26,8 +26,21 @@ import org.bson.types.ObjectId;
  */
 public interface Cache {
 	
+	/**
+	 * Returns all {@link DBObject DBObjects} from a specific collection.
+	 * 
+	 * @param collection The name of the collection.
+	 * @return A {@link Collection} of all objects from that collection.
+	 */
 	public Collection<DBObject> getAll(String collection);
 	
+	/**
+	 * Returns a single {@link DBObject} for the given {@link ObjectId} or {@code null}, if the
+	 * cache doesn't have that document.
+	 * 
+	 * @param id The id of the requested object.
+	 * @return The requested object or {@code null}.
+	 */
 	public DBObject getById(ObjectId id);
 	
 	/**
@@ -56,6 +69,16 @@ public interface Cache {
 	 * @param id The id of the object to delete.
 	 */
 	public void delete(String collection, ObjectId id);
+	
+	/**
+	 * Deletes all {@link DBObject} from cache, that hasn't been updated since {@code timestamp}.
+	 * The cache itself is responsible to save updating timestamps for each object.
+	 * 
+	 * @param collection The collection that should be cleaned.
+	 * @param timestamp A UNIX timestamp indicating the oldest entry the cache shouldn't delete in
+	 *		that collection.
+	 */
+	public void delete(String collection, long timestamp);
 	
 	/**
 	 * Commits all changes made at the cache. This should be called, whenever a consistent 

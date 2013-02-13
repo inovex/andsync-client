@@ -15,6 +15,7 @@
  */
 package de.inovex.andsync.manager;
 
+import de.inovex.andsync.cache.lucene.LuceneCache;
 import java.util.concurrent.ScheduledFuture;
 import com.mongodb.BasicDBObject;
 import java.util.Map;
@@ -29,6 +30,7 @@ import de.inovex.andsync.rest.RestClient.RestResponse;
 import de.inovex.andsync.rest.RestException;
 import de.inovex.andsync.util.Base64;
 import de.inovex.andsync.util.BsonConverter;
+import de.inovex.andsync.util.TimeUtil;
 import de.inovex.jmom.FieldList;
 import de.inovex.jmom.Storage;
 import java.util.Collection;
@@ -91,8 +93,6 @@ class RestStorageHandler implements Storage.DBHandler {
 
 	public Collection<DBObject> onGet(final String collection, final FieldList fl) {
 
-		long nano = System.currentTimeMillis();
-
 		RestResponse response;
 
 		response = mRest.get(REST_OBJECT_PATH, collection);
@@ -103,14 +103,13 @@ class RestStorageHandler implements Storage.DBHandler {
 
 		final List<DBObject> objects = BsonConverter.fromBsonList(response.data);
 
-		// TODO remove time recording
-		System.out.println("-- Start Caching --");
+		long beginCacheUpdate = TimeUtil.getTimestamp();
 
+		// Save all retrieved documents in cache
 		mCache.put(collection, objects);
-
-		System.out.println("-- End Caching objects --");
-
-		Log.w("TOSLOW", String.format("-- Elapsed Time [Caching objects (without references)] " + (System.currentTimeMillis() - nano) / 1000.0 + "s -- "));
+		// Delete all objects from cache, that doesn't exist on the server anymore
+		// -> Haven't been updated in this session (so update timestamp is older than beginCacheUpdate
+		mCache.delete(collection, beginCacheUpdate);
 
 		return objects;
 

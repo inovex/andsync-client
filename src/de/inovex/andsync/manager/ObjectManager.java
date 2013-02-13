@@ -15,14 +15,13 @@
  */
 package de.inovex.andsync.manager;
 
-import org.bson.types.ObjectId;
 import de.inovex.andsync.cache.Cache;
 import de.inovex.andsync.Config;
 import java.util.concurrent.ExecutorService;
 import android.util.Log;
 import de.inovex.andsync.AndSync;
 import de.inovex.andsync.cache.CacheMock;
-import de.inovex.andsync.cache.LuceneCache;
+import de.inovex.andsync.cache.lucene.LuceneCache;
 import de.inovex.andsync.rest.RestClient;
 import de.inovex.jmom.Storage;
 import java.util.List;
@@ -116,12 +115,15 @@ public class ObjectManager {
 		
 		Runnable r = new Runnable() {
 			public void run() {
-				long milli = System.currentTimeMillis();
+				
+				long beforeUpdate = System.currentTimeMillis();
+				
 				List<T> objs = mRestStorage.findAll(clazz);
+				
 				// Commit cache changes since we have not all objects from that fetch
 				mCache.commit();
 				// TODO: Remove time recording
-				Log.w("TOSLOW", "-- Elapsed Time [findAll REST] " + (System.currentTimeMillis() - milli)/1000.0 + "s -- Objects " + objs.size() + " --");
+				Log.w("ANDSYNC_TIME", "-- [findAll REST] Elapsed Time: " + (System.currentTimeMillis() - beforeUpdate)/1000.0 + "s / #Objects: " + objs.size() + " --");
 				mListeners.updateListener(clazz, objs);
 			}
 		};
@@ -132,7 +134,7 @@ public class ObjectManager {
 		
 		List<T> findAll = mCacheStorage.findAll(clazz);
 		
-		Log.w("TOSLOW", " -- Elapsed Time [findAll Cache] " + (System.currentTimeMillis() - milli)/1000.0 + "s --");
+		Log.w("ANDSYNC_TIME", " -- [findAll Cache] Elapsed Time: " + (System.currentTimeMillis() - milli)/1000.0 + "s / #Objects: " + findAll.size() + " --");
 		
 		return findAll;
 		

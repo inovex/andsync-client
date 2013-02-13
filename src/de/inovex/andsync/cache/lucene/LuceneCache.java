@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package de.inovex.andsync.cache;
+package de.inovex.andsync.cache.lucene;
 
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.IndexSearcher;
@@ -26,6 +26,7 @@ import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.analysis.Analyzer;
 import de.inovex.andsync.AndSyncApplication;
+import de.inovex.andsync.cache.Cache;
 import de.inovex.andsync.util.Log;
 import java.io.File;
 import java.io.IOException;
@@ -147,6 +148,17 @@ public class LuceneCache implements Cache {
 			mWriter.deleteDocuments(CacheDocument.getTermForId(id));
 		} catch (IOException ex) {
 			Log.e("Cannot remove object with id %s from cache. [Caused by: %s]", id.toString(), ex.getMessage());
+		}
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public void delete(String collection, long timestamp) {
+		try {
+			mWriter.deleteDocuments(CacheDocument.getQueryForUpdate(collection, timestamp));
+		} catch (IOException ex) {
+			Log.e("Cannot remove objects from cache. [Caused by: %s]", ex.getMessage());
 		}
 	}
 

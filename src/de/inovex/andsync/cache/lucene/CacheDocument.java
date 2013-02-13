@@ -13,20 +13,25 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package de.inovex.andsync.cache;
+package de.inovex.andsync.cache.lucene;
 
 import com.mongodb.DBObject;
 import static de.inovex.andsync.Constants.*;
 import de.inovex.andsync.util.BsonConverter;
+import de.inovex.andsync.util.TimeUtil;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
+import org.apache.lucene.document.FieldType;
+import org.apache.lucene.document.LongField;
 import org.apache.lucene.document.StoredField;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.search.NumericRangeQuery;
+import org.apache.lucene.search.Query;
 import org.apache.lucene.util.BytesRef;
 import org.bson.types.ObjectId;
 
@@ -39,11 +44,19 @@ class CacheDocument implements Iterable<IndexableField> {
 	private static final String KEY_ID = "ID";
 	private static final String DATA_ID = "DATA";
 	private static final String CLASS_ID = "CLASS";
+	private static final String UPDATE_ID = "UPDATE";
+	private static final String TRANSMITTED_ID = "TRANSMITTED";
 
 	private Term idTerm;
 	
 	private final Map<String,IndexableField> fields = new HashMap<String, IndexableField>(3);
 	
+	/**
+	 * Creates a new {@link CacheDocument} from a {@link Document Lucene document}. If not all
+	 * required fields exist in the document an {@link IllegalArgumentException} will be thrown.
+	 * 
+	 * @param doc The lucene document from which to create a {@code CacheDocument}.
+	 */
 	public CacheDocument(Document doc) {
 		
 		String id = doc.get(KEY_ID);
@@ -61,7 +74,18 @@ class CacheDocument implements Iterable<IndexableField> {
 			throw new IllegalArgumentException("Cache document didn't contain data.");
 		}
 		
-		initializeFields(id, clazz, bson.bytes);
+		StoredField updated = (StoredField)doc.getField(UPDATE_ID);		
+		if(updated == null) {
+			throw new IllegalArgumentException("Cache document didn't contain an update timestamp.");
+		}
+		
+		StoredField transmitted = (StoredField)doc.getField(TRANSMITTED_ID);
+		if(transmitted == null) {
+			throw new IllegalArgumentException("Cache document didn't contain an transmitted field.");
+		}
+		
+		initializeFields(id, clazz, bson.bytes, updated.numericValue().longValue(), 
+				transmitted.numericValue().longValue());
 		
 	}
 	
@@ -72,14 +96,18 @@ class CacheDocument implements Iterable<IndexableField> {
 			throw new IllegalArgumentException("DBObject didn't contain a valid ObjectId.");
 		}
 		
-		initializeFields(id.toString(), collection, BsonConverter.bsonObjectAsBytes(object));
+		initializeFields(id.toString(), collection, BsonConverter.bsonObjectAsBytes(object), 
+				TimeUtil.getTimestamp(), 0L);
 		
 	}
-	
-	private void initializeFields(String id, String clazz, byte[] bsonData) {
+
+	private void initializeFields(String id, String clazz, byte[] bsonData, long update, long transmitted) {
 		fields.put(KEY_ID, new StringField(KEY_ID, id, Field.Store.YES));
 		fields.put(CLASS_ID, new StringField(CLASS_ID, clazz, Field.Store.YES));
 		fields.put(DATA_ID, new StoredField(DATA_ID, bsonData));
+		
+		fields.put(UPDATE_ID, new LongField(UPDATE_ID, update, Field.Store.YES));
+		fields.put(TRANSMITTED_ID, new LongField(TRANSMITTED_ID, transmitted, Field.Store.YES));
 	}
 	
 	public DBObject getDBObject() {
@@ -99,16 +127,25 @@ class CacheDocument implements Iterable<IndexableField> {
 		return idTerm;
 	}
 
+	/**
+	 * Returns {@link Iterator} for all the fields of this document.
+	 * 
+	 * @return Iterator for the fields.
+	 */
 	public Iterator<IndexableField> iterator() {
 		return fields.values().iterator();
 	}
-	
+
 	public static Term getTermForId(ObjectId id) {
 		return new Term(KEY_ID, id.toString());
 	}
-	
+
 	public static Term getTermForCollection(String collection) {
 		return new Term(CLASS_ID, collection);
+	}
+
+	public static Query getQueryForUpdate(String collection, long timestamp) {
+		return NumericRangeQuery.newLongRange(UPDATE_ID, 0L, timestamp, true, false);
 	}
 	
 }
