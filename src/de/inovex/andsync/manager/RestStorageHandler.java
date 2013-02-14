@@ -83,12 +83,18 @@ class RestStorageHandler implements Storage.DBHandler {
 
 	private void updateObject(final String collection, final DBObject dbo) {
 		final byte[] data = BsonConverter.toByteArrayList(dbo);
-		mRest.post(data, REST_OBJECT_PATH, collection);
+		// Try sending to server. If we got a response mark as transmitted in cache.
+		if(mRest.post(data, REST_OBJECT_PATH, collection) != null) {
+			mCache.putTransmitted(collection, dbo);
+		}
 	}
 
 	private void newObject(final String collection, final DBObject dbo) {
 		final byte[] data = BsonConverter.toByteArrayList(dbo);
-		mRest.put(data, REST_OBJECT_PATH, collection);
+		// Try sending to server. If we got a response mark as transmitted in cache.
+		if(mRest.put(data, REST_OBJECT_PATH, collection) != null) {
+			mCache.putTransmitted(collection, dbo);
+		}
 	}
 
 	public Collection<DBObject> onGet(final String collection, final FieldList fl) {
@@ -106,7 +112,7 @@ class RestStorageHandler implements Storage.DBHandler {
 		long beginCacheUpdate = TimeUtil.getTimestamp();
 
 		// Save all retrieved documents in cache
-		mCache.put(collection, objects);
+		mCache.putTransmitted(collection, objects);
 		// Delete all objects from cache, that doesn't exist on the server anymore
 		// -> Haven't been updated in this session (so update timestamp is older than beginCacheUpdate
 		mCache.delete(collection, beginCacheUpdate);
@@ -126,7 +132,7 @@ class RestStorageHandler implements Storage.DBHandler {
 		}
 
 		DBObject dbobj = mCallCollector.callForId(dbref.getRef(), (ObjectId) dbref.getId());
-		mCache.put(dbref.getRef(), dbobj);
+		mCache.putTransmitted(dbref.getRef(), dbobj);
 		return dbobj;
 
 	}
@@ -136,7 +142,6 @@ class RestStorageHandler implements Storage.DBHandler {
 	}
 
 	private interface RestCall {
-
 		RestResponse doCall() throws RestException;
 	}
 
@@ -155,8 +160,6 @@ class RestStorageHandler implements Storage.DBHandler {
 		private final long MAX_RETRY_TIME = 60000;
 		private final int MAX_RETRIES = 10;
 		
-		private int id = 1;
-
 		public RepeatingRestClient(RestClient wrappedClient) {
 			assert mWrapped != null;
 			mWrapped = wrappedClient;

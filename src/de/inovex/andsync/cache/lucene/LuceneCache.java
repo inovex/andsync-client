@@ -15,6 +15,7 @@
  */
 package de.inovex.andsync.cache.lucene;
 
+import android.util.Log;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.index.IndexReader;
@@ -27,7 +28,8 @@ import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.analysis.Analyzer;
 import de.inovex.andsync.AndSyncApplication;
 import de.inovex.andsync.cache.Cache;
-import de.inovex.andsync.util.Log;
+import de.inovex.andsync.util.FileUtil;
+import de.inovex.andsync.util.TimeUtil;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -57,21 +59,52 @@ public class LuceneCache implements Cache {
 	private IndexSearcher mSearcher;
 	
 	public LuceneCache() throws IOException {
-		File cacheDir = new File(AndSyncApplication.getAppContext().getCacheDir(), LUCENE_CACHE_DIR);
-		// Use NativeFSLockFactory, so we don't need to unlock something, so we don't need to
-		// force the user to tell us about his app's lifecycle.
-		mStore = new SimpleFSDirectory(cacheDir, new NativeFSLockFactory());
-	
-		Analyzer a = new StandardAnalyzer(Version.LUCENE_41);
-		Codec.setDefault(new Lucene41Codec());
 		
-		IndexWriterConfig config = new IndexWriterConfig(Version.LUCENE_41, a);
-		config.setRAMBufferSizeMB(5);
-		mWriter = new IndexWriter(mStore, config);
-		mWriter.commit();
-		
-		mReader = DirectoryReader.open(mStore);
-		mSearcher = new IndexSearcher(mReader);
+		boolean cacheCreated = false;
+		boolean retried = false;
+		while(!cacheCreated) {
+			
+			// Try closing the store if perhaps opened from last try.
+			if(mStore != null) {
+				mStore.close();
+			}
+			
+			File cacheDir = new File(AndSyncApplication.getAppContext().getExternalCacheDir(), LUCENE_CACHE_DIR);
+			if(!cacheDir.exists()) {
+				cacheDir.mkdir();
+			}
+			
+			// Use NativeFSLockFactory, so we don't need to unlock something, so we don't need to
+			// force the user to tell us about his app's lifecycle.
+			mStore = new SimpleFSDirectory(cacheDir, new NativeFSLockFactory());
+
+			Analyzer a = new StandardAnalyzer(Version.LUCENE_41);
+			Codec.setDefault(new Lucene41Codec());
+
+			try {
+				IndexWriterConfig config = new IndexWriterConfig(Version.LUCENE_41, a);
+				//config.setRAMBufferSizeMB(5);
+				mWriter = new IndexWriter(mStore, config);
+				mWriter.commit();
+			
+				mReader = DirectoryReader.open(mStore);
+				mSearcher = new IndexSearcher(mReader);
+				
+				cacheCreated = true;
+				
+			} catch(IOException ex) {
+				if(mWriter != null) mWriter.close();
+				Log.w(LOG_TAG, String.format("Cache dir was corrupted, clearing cache. [Caused by: %s]", ex.getMessage()));
+				if(!retried) {
+					FileUtil.delete(cacheDir);
+					retried = true;
+				} else {
+					throw new IOException("Cannot create cache dir.", ex);
+				}
+				continue;
+			}
+			
+		}
 		
 	}
 
@@ -101,9 +134,7 @@ public class LuceneCache implements Cache {
 	@Override	
 	public DBObject getById(ObjectId id) {
 		try {
-			TermQuery tq = new TermQuery(CacheDocument.getTermForId(id));
-			ScoreDoc sdoc = mSearcher.search(tq, 1).scoreDocs[0];
-			return convertScoreDoc(sdoc);
+			return getDocById(id).getDBObject();
 		} catch(IOException ex) {
 			Log.e("Cannot get document from cache. [Caused by: %s]", ex.getMessage());
 			return null;
@@ -114,9 +145,9 @@ public class LuceneCache implements Cache {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public synchronized void put(String collection, List<DBObject> dbos) {
+	public void put(String collection, List<DBObject> dbos) {
 		for(DBObject dbo : dbos) {
-			put(collection, dbo);
+			putObject(collection, dbo, false);
 		}
 	}
 		
@@ -124,7 +155,27 @@ public class LuceneCache implements Cache {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public synchronized void put(String collection, DBObject dbo) {
+	public void put(String collection, DBObject dbo) {
+		putObject(collection, dbo, false);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public void putTransmitted(String Collection, DBObject dbo) {
+		putObject(Collection, dbo, true);
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 */
+	public void putTransmitted(String collection, List<DBObject> dbos) {
+		for(DBObject dbo : dbos) {
+			putObject(collection, dbo, true);
+		}
+	}
+	
+	private synchronized void putObject(String collection, DBObject dbo, boolean transmitted) {
 		if(dbo == null) return;
 		ObjectId id = (ObjectId)dbo.get(MONGO_ID);
 		if(id == null) {
@@ -132,10 +183,12 @@ public class LuceneCache implements Cache {
 		}
 		
 		try {
-			CacheDocument cacheDoc = new CacheDocument(collection, dbo);
+			CacheDocument cacheDoc = new CacheDocument(collection, dbo, 
+					transmitted ? TimeUtil.getTimestamp() : 0L);
 			mWriter.updateDocument(cacheDoc.getIdTerm(), cacheDoc);
 		} catch(Exception ex) {
-			Log.e("Cannot cache object with id %s. [Caused by: %s]", id.toString(), ex.getMessage());
+			Log.w(LOG_TAG, String.format("Cannot cache object with id %s. [Caused by: %s]", 
+					id.toString(), ex.getMessage()));
 		}
 	}
 	
@@ -147,7 +200,8 @@ public class LuceneCache implements Cache {
 		try {
 			mWriter.deleteDocuments(CacheDocument.getTermForId(id));
 		} catch (IOException ex) {
-			Log.e("Cannot remove object with id %s from cache. [Caused by: %s]", id.toString(), ex.getMessage());
+			Log.w(LOG_TAG, String.format("Cannot remove object with id %s from cache. [Caused by: %s]", 
+					id.toString(), ex.getMessage()));
 		}
 	}
 
@@ -156,11 +210,28 @@ public class LuceneCache implements Cache {
 	 */
 	public void delete(String collection, long timestamp) {
 		try {
-			mWriter.deleteDocuments(CacheDocument.getQueryForUpdate(collection, timestamp));
+			mWriter.deleteDocuments(CacheDocument.getQueryForDeletion(collection, timestamp));
 		} catch (IOException ex) {
-			Log.e("Cannot remove objects from cache. [Caused by: %s]", ex.getMessage());
+			Log.w(LOG_TAG, String.format("Cannot remove objects from cache. [Caused by: %s]", ex.getMessage()));
 		}
 	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public synchronized void transmitted(String collection, ObjectId id) {
+		Log.i("ANDSYNC", "Mark ObjectId " + id.toString() + " as transmitted.");
+		
+		try {
+			CacheDocument doc = getDocById(id);
+			doc.setTransmitted(TimeUtil.getTimestamp());
+			mWriter.updateDocument(doc.getIdTerm(), doc);
+		} catch (IOException ex) {
+			Log.w(LOG_TAG, String.format("Error marking document with id %s in cache as transmitted. "
+					+ "[Caused by: %s]", id.toString(), ex.getMessage()));
+		}
+		
+	}	
 
 	/**
 	 * {@inheritDoc}
@@ -173,21 +244,26 @@ public class LuceneCache implements Cache {
 		}
 	}
 	
+	private CacheDocument getDocById(ObjectId id) throws IOException {
+		TermQuery tq = new TermQuery(CacheDocument.getTermForId(id));
+		ScoreDoc[] sdocs = mSearcher.search(tq, 1).scoreDocs;
+		if(sdocs.length < 1) {
+			Log.e(LOG_TAG, String.format("Couldn't find object for id %s in cache.", id.toString()));
+			return null;
+		}
+		return new CacheDocument(mReader.document(sdocs[0].doc));
+	}
+	
 	private Collection<DBObject> convertScoreDocs(ScoreDoc[] scoreDocs) throws IOException {
 		
 		List<DBObject> dbos = new ArrayList<DBObject>(scoreDocs.length);
 		
 		for(ScoreDoc doc : scoreDocs) {
-			dbos.add(convertScoreDoc(doc));
+			dbos.add(new CacheDocument(mReader.document(doc.doc)).getDBObject());
 		}
 		
 		return dbos;
 		
-	}
-	
-	private DBObject convertScoreDoc(ScoreDoc scoreDoc) throws IOException {
-		CacheDocument cdoc = new CacheDocument(mReader.document(scoreDoc.doc));
-		return cdoc.getDBObject();
 	}
 	
 }

@@ -58,6 +58,16 @@ public class CacheMock implements Cache {
 	/**
 	 * {@inheritDoc}
 	 */
+	public void putTransmitted(String Collection, DBObject dbo) { }
+	
+	/**
+	 * {@inheritDoc}
+	 */
+	public void putTransmitted(String collection, List<DBObject> dbos) { }
+	
+	/**
+	 * {@inheritDoc}
+	 */
 	public void delete(String collection, ObjectId id) { }
 
 	/**
@@ -65,6 +75,11 @@ public class CacheMock implements Cache {
 	 */
 	public void delete(String collection, long timestamp) {	}
 
+	/**
+	 * {@inheritDoc}
+	 */
+	public void transmitted(String collection, ObjectId id) { }
+	
 	/**
 	 * {@inheritDoc}
 	 */

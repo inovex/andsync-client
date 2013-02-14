@@ -24,12 +24,13 @@ import java.util.Iterator;
 import java.util.Map;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
-import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.LongField;
 import org.apache.lucene.document.StoredField;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.search.BooleanClause.Occur;
+import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.NumericRangeQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.util.BytesRef;
@@ -89,7 +90,7 @@ class CacheDocument implements Iterable<IndexableField> {
 		
 	}
 	
-	public CacheDocument(String collection, DBObject object) {
+	public CacheDocument(String collection, DBObject object, long timestamp) {
 		
 		Object id = object.get(MONGO_ID);
 		if(id == null || !(id instanceof ObjectId)) {
@@ -97,7 +98,10 @@ class CacheDocument implements Iterable<IndexableField> {
 		}
 		
 		initializeFields(id.toString(), collection, BsonConverter.bsonObjectAsBytes(object), 
-				TimeUtil.getTimestamp(), 0L);
+				TimeUtil.getTimestamp(), timestamp);
+		
+		// TODO: Remove string representation, just for debugging purposes
+		fields.put("TO_STRING", new StoredField("TO_STRING", object.toString()));
 		
 	}
 
@@ -112,6 +116,23 @@ class CacheDocument implements Iterable<IndexableField> {
 	
 	public DBObject getDBObject() {
 		return BsonConverter.fromBson(fields.get(DATA_ID).binaryValue().bytes);
+	}
+	
+	/**
+	 * Set the transmitted field of this document to a specific timestamp.
+	 * 
+	 * @param timestamp The timestamp to set.
+	 */
+	public void setTransmitted(long timestamp) {
+		IndexableField field = fields.get(TRANSMITTED_ID);
+		LongField lf;
+		if(field == null || !(field instanceof LongField)) {
+			lf = new LongField(TRANSMITTED_ID, timestamp, Field.Store.YES);
+		} else {
+			lf = (LongField)field;
+			lf.setLongValue(timestamp);
+		}
+		fields.put(TRANSMITTED_ID, lf);
 	}
 	
 	/**
@@ -144,8 +165,13 @@ class CacheDocument implements Iterable<IndexableField> {
 		return new Term(CLASS_ID, collection);
 	}
 
-	public static Query getQueryForUpdate(String collection, long timestamp) {
-		return NumericRangeQuery.newLongRange(UPDATE_ID, 0L, timestamp, true, false);
+	public static Query getQueryForDeletion(String collection, long timestamp) {
+		BooleanQuery query = new BooleanQuery();
+		query.add(NumericRangeQuery.newLongRange(UPDATE_ID, null, timestamp, true, false), Occur.MUST);
+		// Only delete old entries that has been transmitted to server already. So don't delete 
+		// entries that this client has created, but hadn't been transfered to server yet.
+		query.add(NumericRangeQuery.newLongRange(TRANSMITTED_ID, 0L, 0L, true, true), Occur.MUST_NOT);
+		return query;
 	}
 	
 }

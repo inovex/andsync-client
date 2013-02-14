@@ -21,7 +21,9 @@ import java.util.List;
 import org.bson.types.ObjectId;
 
 /**
- *
+ * The interface the client side cache must implement. The client side cache is responsible for
+ * storing objects on the device tracking their transmitted and updated state.
+ * 
  * @author Tim Roes <tim.roes@inovex.de>
  */
 public interface Cache {
@@ -44,7 +46,7 @@ public interface Cache {
 	public DBObject getById(ObjectId id);
 	
 	/**
-	 * Caches a {@link DBObject}.
+	 * Caches a {@link DBObject}. The server doesn't know this object yet.
 	 * 
 	 * @param collection The name of the collection that this object was or will be stored on the
 	 *		server. This should be the fully qualified class name of the object's class.
@@ -53,13 +55,32 @@ public interface Cache {
 	public void put(String collection, DBObject dbo);
 	
 	/**
-	 * Caches a list of {@link DBObject DBObjects}.
+	 * Caches a list of {@link DBObject DBObjects}. The server doesn't know these objects yet.
 	 * 
 	 * @param collection The name of the collection that this object was or will be stored on the
 	 *		server. This should be the fully qualified class name of the obejct's class.
 	 * @param dbos A list of objects to cache.
 	 */
 	public void put(String collection, List<DBObject> dbos);
+	
+	/**
+	 * Caches a {@link DBObject}, but unlike {@link #put(java.lang.String, com.mongodb.DBObject) }
+	 * this method will be called if the server knows about these objects (either the objects are coming
+	 * from the server or were just transmitted to the server).
+	 * @param Collection
+	 * @param dbo 
+	 */
+	public void putTransmitted(String Collection, DBObject dbo);
+	
+	/**
+	 * Caches a list of {@link DBObject DBObjects}, but unlike {@link #put(java.lang.String, java.util.List)}
+	 * this method will be called if the server knows about these objects (either the objects are coming 
+	 * from the server or were just transmitted to the server).
+	 * 
+	 * @param collection
+	 * @param dbos 
+	 */
+	public void putTransmitted(String collection, List<DBObject> dbos);
 	
 	/**
 	 * Deletes an {@link DBObject} from cache.
@@ -79,6 +100,8 @@ public interface Cache {
 	 *		that collection.
 	 */
 	public void delete(String collection, long timestamp);
+	
+	public void transmitted(String collection, ObjectId id);
 	
 	/**
 	 * Commits all changes made at the cache. This should be called, whenever a consistent 

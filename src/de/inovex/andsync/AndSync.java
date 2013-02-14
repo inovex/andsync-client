@@ -60,6 +60,11 @@ public class AndSync {
 		checkState();
 		sManager.save(obj);
 	}
+	
+	public static void saveMultiple(Iterable<?> objects) {
+		checkState();
+		sManager.saveMultiple(objects);
+	}
 
 	public static <T> List<T> findAll(Class<T> clazz) {
 		checkState();

@@ -101,6 +101,24 @@ public class ObjectManager {
 		Runnable r = new Runnable() {
 			public void run() {
 				mRestStorage.save(obj);
+				// Commit cache after we saved our object
+				mCache.commit();
+			}
+		};
+		
+		mExecutor.submit(r);
+		
+		// We don't call save on the cache, since saving in cache will be done from inside the
+		// REST storage. See CacheStorageHandler.onSave() for explanation.
+		
+	}
+	
+	public void saveMultiple(final Iterable<? extends Object> objects) {
+		
+		Runnable r = new Runnable() {
+			public void run() {
+				mRestStorage.saveMultiple(objects);
+				mCache.commit();
 			}
 		};
 		
@@ -151,6 +169,7 @@ public class ObjectManager {
 		mExecutor.submit(r);
 		
 		mCacheStorage.delete(obj);
+		mCache.commit();
 		
 	}
 	

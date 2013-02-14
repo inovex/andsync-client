@@ -53,7 +53,7 @@ public class StorageWrapper {
 		return (this.mStorage != null) ? mStorage.getCache() : null;
 	}
 	
-	public void saveMultiple(Iterable<Object> objects) {
+	public void saveMultiple(Iterable<?> objects) {
 		if(this.mStorage != null) {
 			mStorage.saveMultiple(objects);
 		}
@@ -70,11 +70,7 @@ public class StorageWrapper {
 	}
 
 	public <T> List<T> findAll(Class<T> clazz) {
-		if(this.mStorage != null) {
-			return mStorage.findAll(clazz);
-		} else {
-			return new ArrayList<T>();
-		}
+		return (this.mStorage != null) ? mStorage.findAll(clazz) : new ArrayList<T>();
 	}
 
 	public void delete(Object obj) {

@@ -24,7 +24,8 @@ import java.util.Collection;
 import org.bson.types.ObjectId;
 
 /**
- *
+ * This handler is used in the {@link Storage cache storage} inside the {@link ObjectManager}
+ * 
  * @author Tim Roes <tim.roes@inovex.de>
  */
 class CacheStorageHandler implements Storage.DBHandler {
