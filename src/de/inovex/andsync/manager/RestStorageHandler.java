@@ -108,7 +108,7 @@ class RestStorageHandler implements Storage.DBHandler {
 	 */
 	@Override
 	public void onSave(final String collection, final DBObject dbo) {
-		if (dbo.containsField("_id")) {
+		if (dbo.containsField(MONGO_ID)) {
 			// Object already has an id, update object
 			// Put the object also in cache (see CacheStorageHandler.onSave() for explanation)
 			mCache.putUpdated(collection, dbo);
@@ -116,7 +116,7 @@ class RestStorageHandler implements Storage.DBHandler {
 		} else {
 			// Object is new in storage
 			// Create an id for the DBObject.
-			dbo.put("_id", ObjectId.get());
+			dbo.put(MONGO_ID, ObjectId.get());
 			// Put the object also in cache (see CacheStorageHandler.onSave() for explanation)
 			mCache.put(collection, dbo);
 			newObject(collection, dbo);
@@ -124,11 +124,7 @@ class RestStorageHandler implements Storage.DBHandler {
 	}
 
 	private void updateObject(final String collection, final DBObject dbo) {
-		final byte[] data = BsonConverter.toByteArrayList(dbo);
-		// Try sending to server. If we got a response mark as transmitted in cache.
-		if(mRest.post(data, REST_OBJECT_PATH, collection) != null) {
-			mCache.putTransmitted(collection, dbo);
-		}
+		mCallCollector.postCall(collection, dbo);
 	}
 
 	/**
@@ -308,9 +304,14 @@ class RestStorageHandler implements Storage.DBHandler {
 		private Map<String, Set<ObjectId>> mIdCalls = new ConcurrentHashMap<String, Set<ObjectId>>();
 		
 		/**
-		 * A map of all collections to a set of their pending PUT calls.
+		 * A map of all collections and their pending PUT calls.
 		 */
 		private Map<String, Set<DBObject>> mPutCalls = new ConcurrentHashMap<String, Set<DBObject>>();
+		
+		/**
+		 * A map of all collections and their pending POST calls.
+		 */
+		private Map<String, Set<DBObject>> mPostCalls = new ConcurrentHashMap<String, Set<DBObject>>();
 		
 		/**
 		 * The {@link DBObject DBObjects} returned from the server for each {@link ObjectId}.
@@ -353,11 +354,17 @@ class RestStorageHandler implements Storage.DBHandler {
 
 			public void run() {
 				
-				// Check for pending put calls. If they exist, do the REST calls.
-				// The call will also check for 
+				// Check for pending put calls.
 				for(String collection : mPutCalls.keySet()) {
 					if(numPendingPutCalls(collection) > 0) {
 						doPutCalls(collection);
+					}
+				}
+				
+				// Check for pending post calls.
+				for(String collection : mPostCalls.keySet()) {
+					if(numPendingPostCalls(collection) > 0) {
+						doPostCalls(collection);
 					}
 				}
 				
@@ -390,14 +397,13 @@ class RestStorageHandler implements Storage.DBHandler {
 		 */
 		private boolean hasPendingCalls() {
 			for (Set<ObjectId> pending : mIdCalls.values()) {
-				if (pending.size() > 0) {
-					return true;
-				}
+				if (pending.size() > 0) return true;
+			}
+			for(Set<DBObject> pending : mPostCalls.values()) {
+				if(pending.size() > 0) return true;
 			}
 			for(Set<DBObject> pending : mPutCalls.values()) {
-				if(pending.size() > 0) {
-					return true;
-				}
+				if(pending.size() > 0) return true;
 			}
 			return false;
 		}
@@ -412,19 +418,28 @@ class RestStorageHandler implements Storage.DBHandler {
 			return calls != null ? calls.size() : 0;
 		}
 		
+		private int numPendingPostCalls(String collection) {
+			Set<DBObject> calls = mPostCalls.get(collection);
+			return calls != null ? calls.size() : 0;
+		}
+		
+		private <T> void savePendingCall(Map<String,Set<T>> pendingCache, String collection, T object) {
+			synchronized(getCollectionLock(collection)) {
+				Set<T> pending = pendingCache.get(collection);
+				if(pending == null) {
+					pending = Collections.newSetFromMap(new ConcurrentHashMap<T, Boolean>());
+					pendingCache.put(collection, pending);
+				}
+				pending.add(object);
+			}
+		}
+		
 		public void putCall(final String collection, final DBObject dbo) {
 			
 			new Thread(new Runnable() {
 
 				public void run() {
-					synchronized(getCollectionLock(collection)) {
-						Set<DBObject> dbos = mPutCalls.get(collection);
-						if(dbos == null) {
-							dbos = Collections.newSetFromMap(new ConcurrentHashMap<DBObject, Boolean>());
-							mPutCalls.put(collection, dbos);
-						}
-						dbos.add(dbo);
-					}
+					savePendingCall(mPutCalls, collection, dbo);
 
 					if(numPendingPutCalls(collection) >= CALL_COLLECT_LIMIT) {
 						doPutCalls(collection);
@@ -436,22 +451,30 @@ class RestStorageHandler implements Storage.DBHandler {
 			}).start();
 			
 		}
+		
+		public void postCall(final String collection, final DBObject dbo) {
+			
+			new Thread(new Runnable() {
+
+				public void run() {
+					savePendingCall(mPostCalls, collection, dbo);
+					
+					if(numPendingPostCalls(collection) >= CALL_COLLECT_LIMIT) {
+						doPostCalls(collection);			
+					}
+					
+					scheduleCall();
+					
+				}
+				
+			}).start();
+			
+		}
 
 		public DBObject callForId(String collection, ObjectId id) {
 
-			// Wait till a current call for that collection has been finished,
-			// before adding this call to the queue.
-			synchronized (getCollectionLock(collection)) {
-				// Get the queue (a Set, since we only need to fetch each object one time)
-				// or create a new queue for that collection.
-				Set<ObjectId> idSet = mIdCalls.get(collection);
-				if (idSet == null) {
-					idSet = Collections.newSetFromMap(new ConcurrentHashMap<ObjectId, Boolean>());
-					mIdCalls.put(collection, idSet);
-				}
-				// Add the id of the object we want to get to the queue for its collection.
-				idSet.add(id);
-			}
+			// Add the call to the queue
+			savePendingCall(mIdCalls, collection, id);
 
 			scheduleCall();
 
@@ -532,7 +555,7 @@ class RestStorageHandler implements Storage.DBHandler {
 		 */
 		private void doPutCalls(final String collection) {
 			
-			Runnable r = new Runnable() {
+			new Thread(new Runnable() {
 
 				public void run() {
 					
@@ -557,10 +580,38 @@ class RestStorageHandler implements Storage.DBHandler {
 					}
 				}
 				
-			};
+			}).start();
+	
+		}
+		
+		private void doPostCalls(final String collection) {
 			
-			new Thread(r).start();
-			
+			new Thread(new Runnable() {
+
+				public void run() {
+					synchronized(getCollectionLock(collection)) {
+						
+						Set<DBObject> postCalls = mPostCalls.get(collection);
+						
+						if(postCalls == null) return;
+						
+						BasicBSONList bsonList = new BasicBSONList();
+						for(DBObject call : postCalls) {
+							bsonList.add(call);
+						}
+						
+						if(mRest.post(BsonConverter.bsonObjectAsBytes(bsonList), REST_OBJECT_PATH, collection) != null) {
+							for(DBObject call : postCalls) {
+								mCache.putTransmitted(collection, call);
+							}
+							postCalls.clear();
+						}
+						
+					}
+				}
+				
+			}).start();
+
 		}
 		
 		private void doGetByIdCalls(final String collection) {

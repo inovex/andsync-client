@@ -108,6 +108,11 @@ public class LuceneCache implements Cache {
 		}
 		
 	}
+	
+	private int getSearchLimit() {
+		int numDocs = mReader.numDocs();
+		return numDocs > 0 ? numDocs : 1;
+	}
 
 	/**
 	 * {@inheritDoc}
@@ -118,7 +123,7 @@ public class LuceneCache implements Cache {
 		try {
 			TermQuery tq = new TermQuery(LuceneCacheDocument.getTermForCollection(collection));
 			if(mReader.numDocs() > 0) {
-				ScoreDoc[] docs = mSearcher.search(tq, mReader.numDocs()).scoreDocs;
+				ScoreDoc[] docs = mSearcher.search(tq, getSearchLimit()).scoreDocs;
 				return convertScoreDocs(docs);
 			}
 		} catch (IOException ex) {
@@ -152,7 +157,7 @@ public class LuceneCache implements Cache {
 		
 		ScoreDoc[] docs;
 		try {
-			docs = mSearcher.search(LuceneCacheDocument.getQueryForUntransmitted(), mReader.numDocs()).scoreDocs;
+			docs = mSearcher.search(LuceneCacheDocument.getQueryForUntransmitted(), getSearchLimit()).scoreDocs;
 		} catch (IOException ex) {
 			Log.w(LOG_TAG, String.format("Could not get list of untransmitted objects from cache. [Caused by: %s]", 
 					ex.getMessage()));
