@@ -16,6 +16,7 @@
 package de.inovex.andsync.cache.lucene;
 
 import com.mongodb.DBObject;
+import de.inovex.andsync.cache.CacheDocument;
 import static de.inovex.andsync.Constants.*;
 import de.inovex.andsync.util.BsonConverter;
 import de.inovex.andsync.util.TimeUtil;
@@ -24,6 +25,7 @@ import java.util.Iterator;
 import java.util.Map;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
+import org.apache.lucene.document.IntField;
 import org.apache.lucene.document.LongField;
 import org.apache.lucene.document.StoredField;
 import org.apache.lucene.document.StringField;
@@ -40,7 +42,7 @@ import org.bson.types.ObjectId;
  *
  * @author Tim Roes <tim.roes@inovex.de>
  */
-class CacheDocument implements Iterable<IndexableField> {
+public class LuceneCacheDocument implements Iterable<IndexableField>, CacheDocument {
 	
 	private static final String KEY_ID = "ID";
 	private static final String DATA_ID = "DATA";
@@ -53,12 +55,12 @@ class CacheDocument implements Iterable<IndexableField> {
 	private final Map<String,IndexableField> fields = new HashMap<String, IndexableField>(3);
 	
 	/**
-	 * Creates a new {@link CacheDocument} from a {@link Document Lucene document}. If not all
+	 * Creates a new {@link LuceneCacheDocument} from a {@link Document Lucene document}. If not all
 	 * required fields exist in the document an {@link IllegalArgumentException} will be thrown.
 	 * 
-	 * @param doc The lucene document from which to create a {@code CacheDocument}.
+	 * @param doc The lucene document from which to create a {@code LuceneCacheDocument}.
 	 */
-	public CacheDocument(Document doc) {
+	public LuceneCacheDocument(Document doc) {
 		
 		String id = doc.get(KEY_ID);
 		if(!ObjectId.isValid(id)) {
@@ -86,11 +88,11 @@ class CacheDocument implements Iterable<IndexableField> {
 		}
 		
 		initializeFields(id, clazz, bson.bytes, updated.numericValue().longValue(), 
-				transmitted.numericValue().longValue());
+				TransmittedState.values()[transmitted.numericValue().intValue()]);
 		
 	}
 	
-	public CacheDocument(String collection, DBObject object, long timestamp) {
+	public LuceneCacheDocument(String collection, DBObject object, TransmittedState transmitted) {
 		
 		Object id = object.get(MONGO_ID);
 		if(id == null || !(id instanceof ObjectId)) {
@@ -98,41 +100,33 @@ class CacheDocument implements Iterable<IndexableField> {
 		}
 		
 		initializeFields(id.toString(), collection, BsonConverter.bsonObjectAsBytes(object), 
-				TimeUtil.getTimestamp(), timestamp);
+				TimeUtil.getTimestamp(), transmitted);
 		
 		// TODO: Remove string representation, just for debugging purposes
 		fields.put("TO_STRING", new StoredField("TO_STRING", object.toString()));
 		
 	}
 
-	private void initializeFields(String id, String clazz, byte[] bsonData, long update, long transmitted) {
+	private void initializeFields(String id, String clazz, byte[] bsonData, long update, TransmittedState transmitted) {
 		fields.put(KEY_ID, new StringField(KEY_ID, id, Field.Store.YES));
 		fields.put(CLASS_ID, new StringField(CLASS_ID, clazz, Field.Store.YES));
 		fields.put(DATA_ID, new StoredField(DATA_ID, bsonData));
 		
 		fields.put(UPDATE_ID, new LongField(UPDATE_ID, update, Field.Store.YES));
-		fields.put(TRANSMITTED_ID, new LongField(TRANSMITTED_ID, transmitted, Field.Store.YES));
+		fields.put(TRANSMITTED_ID, new IntField(TRANSMITTED_ID, transmitted.ordinal(), Field.Store.YES));
 	}
 	
 	public DBObject getDBObject() {
 		return BsonConverter.fromBson(fields.get(DATA_ID).binaryValue().bytes);
 	}
 	
-	/**
-	 * Set the transmitted field of this document to a specific timestamp.
-	 * 
-	 * @param timestamp The timestamp to set.
-	 */
-	public void setTransmitted(long timestamp) {
-		IndexableField field = fields.get(TRANSMITTED_ID);
-		LongField lf;
-		if(field == null || !(field instanceof LongField)) {
-			lf = new LongField(TRANSMITTED_ID, timestamp, Field.Store.YES);
-		} else {
-			lf = (LongField)field;
-			lf.setLongValue(timestamp);
-		}
-		fields.put(TRANSMITTED_ID, lf);
+	public String getCollection() {
+		return fields.get(CLASS_ID).stringValue();
+	}
+
+	@Override
+	public TransmittedState getState() {
+		return TransmittedState.values()[fields.get(TRANSMITTED_ID).numericValue().intValue()];
 	}
 	
 	/**
@@ -172,6 +166,11 @@ class CacheDocument implements Iterable<IndexableField> {
 		// entries that this client has created, but hadn't been transfered to server yet.
 		query.add(NumericRangeQuery.newLongRange(TRANSMITTED_ID, 0L, 0L, true, true), Occur.MUST_NOT);
 		return query;
+	}
+	
+	public static Query getQueryForUntransmitted() {
+		return NumericRangeQuery.newIntRange(TRANSMITTED_ID, TransmittedState.NEVER_TRANSMITTED.ordinal(), 
+				TransmittedState.UPDATE_NOT_TRANSMITTED.ordinal(), true, true);
 	}
 	
 }

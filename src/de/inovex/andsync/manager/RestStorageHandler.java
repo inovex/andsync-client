@@ -15,7 +15,6 @@
  */
 package de.inovex.andsync.manager;
 
-import de.inovex.andsync.cache.lucene.LuceneCache;
 import java.util.concurrent.ScheduledFuture;
 import com.mongodb.BasicDBObject;
 import java.util.Map;
@@ -25,6 +24,7 @@ import com.mongodb.BasicDBList;
 import de.inovex.andsync.cache.Cache;
 import com.mongodb.DBObject;
 import com.mongodb.DBRef;
+import de.inovex.andsync.cache.CacheDocument;
 import de.inovex.andsync.rest.RestClient;
 import de.inovex.andsync.rest.RestClient.RestResponse;
 import de.inovex.andsync.rest.RestException;
@@ -45,6 +45,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.apache.lucene.util.NamedThreadFactory;
+import org.bson.types.BasicBSONList;
 import org.bson.types.ObjectId;
 import static de.inovex.andsync.Constants.*;
 
@@ -63,13 +64,54 @@ class RestStorageHandler implements Storage.DBHandler {
 		this.mCallCollector = new CallCollector();
 		this.mRest = new RepeatingRestClient(restClient);
 		this.mCache = cache;
+		untransmitted();
+	}
+	
+	/**
+	 * Transmit all untransmitted changes or newly created objects in another {@link Thread}
+	 * to the server.
+	 */
+	private synchronized void untransmitted() {
+		
+		new Thread(new Runnable() {	
+			public void run() {
+			
+				// Get a list of al untransmitted objects
+				Collection<CacheDocument> untransmitted = mCache.getUntransmitted();
+				for(CacheDocument doc : untransmitted) {
+					if(doc.getState() == CacheDocument.TransmittedState.NEVER_TRANSMITTED) {
+						newObject(doc.getCollection(), doc.getDBObject());
+					} else if(doc.getState() == CacheDocument.TransmittedState.UPDATE_NOT_TRANSMITTED) {
+						updateObject(doc.getCollection(), doc.getDBObject());
+					}
+				}
+				
+			}
+		}).start();
+		
 	}
 
+	/**
+	 * Saves an {@link DBObject} into the specified collection. This method will detect if the 
+	 * object has never been transmitted to the server (it doesn't contain an {@link ObjectId}) or
+	 * if it has already been transfered. The object will be stored into the cache (marked as either
+	 * never transmitted or updated) and then either PUT to server or POSTed to server via the
+	 * REST interface.
+	 * 
+	 * This method need to take care of the caching of the object (and not the 
+	 * {@link CacheStorageHandler#onSave(java.lang.String, com.mongodb.DBObject) method) since 
+	 * this is the only place where the difference between UPDATE and CREATE of an object can be
+	 * detected.
+	 * 
+	 * @param collection The name of the collection for that object.
+	 * @param dbo The object to save.
+	 */
+	@Override
 	public void onSave(final String collection, final DBObject dbo) {
 		if (dbo.containsField("_id")) {
 			// Object already has an id, update object
 			// Put the object also in cache (see CacheStorageHandler.onSave() for explanation)
-			mCache.put(collection, dbo);
+			mCache.putUpdated(collection, dbo);
 			updateObject(collection, dbo);
 		} else {
 			// Object is new in storage
@@ -89,12 +131,22 @@ class RestStorageHandler implements Storage.DBHandler {
 		}
 	}
 
+	/**
+	 * Transfer an object to the server, that has just been created on that device and never
+	 * has been transfered to the server.
+	 * 
+	 * This will add a PUT call to the {@link #mCallCollector call collector}, so multiple PUT calls
+	 * can be collected and bundled. The object should have been put to cache (marked as never transmitted)
+	 * before this method is called. The call collector will take care of marking the object as
+	 * transmitted as soon as it has been.
+	 * 
+	 * This method will return immediately, before the objects has been transmitted to the server.
+	 * 
+	 * @param collection The collection of that object.
+	 * @param dbo The object to transfer.
+	 */
 	private void newObject(final String collection, final DBObject dbo) {
-		final byte[] data = BsonConverter.toByteArrayList(dbo);
-		// Try sending to server. If we got a response mark as transmitted in cache.
-		if(mRest.put(data, REST_OBJECT_PATH, collection) != null) {
-			mCache.putTransmitted(collection, dbo);
-		}
+		mCallCollector.putCall(collection, dbo);
 	}
 
 	public Collection<DBObject> onGet(final String collection, final FieldList fl) {
@@ -242,31 +294,42 @@ class RestStorageHandler implements Storage.DBHandler {
 		 * Limit of calls that get cached for one collection before sending a REST request.
 		 */
 		private final static int CALL_COLLECT_LIMIT = 100;
+		
 		/**
 		 * Time limit after which a REST call will be made (even when less than {@link #CALL_COLLECT_LIMIT}
 		 * calls are pending.
 		 */
 		private final static int CALL_COLLECT_TIME_LIMIT = 3;
+		
 		/**
 		 * A list of {@link ObjectId} that are waiting to be fetched from server. Separated by their
 		 * collection.
 		 */
 		private Map<String, Set<ObjectId>> mIdCalls = new ConcurrentHashMap<String, Set<ObjectId>>();
+		
+		/**
+		 * A map of all collections to a set of their pending PUT calls.
+		 */
+		private Map<String, Set<DBObject>> mPutCalls = new ConcurrentHashMap<String, Set<DBObject>>();
+		
 		/**
 		 * The {@link DBObject DBObjects} returned from the server for each {@link ObjectId}.
 		 */
 		private Map<ObjectId, DBObject> mResults = new ConcurrentHashMap<ObjectId, DBObject>();
+	
 		/**
 		 * The waiting locks for each call made. Each call holds a list of locks for all pending calls 
 		 * to this {@link ObjectId}.
 		 */
 		private Map<ObjectId, Collection<Object>> mIdLocks = Collections.synchronizedMap(new HashMap<ObjectId, Collection<Object>>());
+	
 		/**
 		 * This is a map containing a lock for each collection. This is used when the call for a collection
 		 * is made and when modifying the {@link #mIdCalls pending calls} for that collection.
 		 * So the pending call ids aren't modified while reading from the list to fetch them via REST.
 		 */
 		private Map<String, Object> mCollectionLocks = Collections.synchronizedMap(new HashMap<String, Object>());
+	
 		/**
 		 * This lock is used when modifying the periodic check for pending calls.
 		 * @see #mScheduled
@@ -274,10 +337,12 @@ class RestStorageHandler implements Storage.DBHandler {
 		 * @see #mExecutor
 		 */
 		private final Object mSchedulerLock = new Object();
+	
 		/**
 		 * This lock is used when modifying the {@link #mIdLocks id locks}.
 		 */
 		private final Object mLockCreationLock = new Object();
+	
 		/**
 		 * This lock is used when modifying the {@link #mResults results list}.
 		 */
@@ -287,10 +352,19 @@ class RestStorageHandler implements Storage.DBHandler {
 		private final Runnable mCheckForPendingCalls = new Runnable() {
 
 			public void run() {
+				
+				// Check for pending put calls. If they exist, do the REST calls.
+				// The call will also check for 
+				for(String collection : mPutCalls.keySet()) {
+					if(numPendingPutCalls(collection) > 0) {
+						doPutCalls(collection);
+					}
+				}
+				
 				// Check if any pending calls exist. If they do, do REST calls.
 				for (String collection : mIdCalls.keySet()) {
-					if (numPendingcalls(collection) > 0) {
-						doCall(collection);
+					if (numPendingIdCalls(collection) > 0) {
+						doGetByIdCalls(collection);
 					}
 				}
 
@@ -308,18 +382,59 @@ class RestStorageHandler implements Storage.DBHandler {
 			}
 		};
 
+		/**
+		 * Checks whether any pending call exists. This will check all type of pending calls and
+		 * return true, if any call (no matter what type) is pending.
+		 * 
+		 * @return Whether any pending call exists.
+		 */
 		private boolean hasPendingCalls() {
 			for (Set<ObjectId> pending : mIdCalls.values()) {
 				if (pending.size() > 0) {
 					return true;
 				}
 			}
+			for(Set<DBObject> pending : mPutCalls.values()) {
+				if(pending.size() > 0) {
+					return true;
+				}
+			}
 			return false;
 		}
 
-		private int numPendingcalls(String collection) {
+		private int numPendingIdCalls(String collection) {
 			Set<ObjectId> calls = mIdCalls.get(collection);
 			return calls != null ? mIdCalls.get(collection).size() : 0;
+		}
+		
+		private int numPendingPutCalls(String collection) {
+			Set<DBObject> calls = mPutCalls.get(collection);
+			return calls != null ? calls.size() : 0;
+		}
+		
+		public void putCall(final String collection, final DBObject dbo) {
+			
+			new Thread(new Runnable() {
+
+				public void run() {
+					synchronized(getCollectionLock(collection)) {
+						Set<DBObject> dbos = mPutCalls.get(collection);
+						if(dbos == null) {
+							dbos = Collections.newSetFromMap(new ConcurrentHashMap<DBObject, Boolean>());
+							mPutCalls.put(collection, dbos);
+						}
+						dbos.add(dbo);
+					}
+
+					if(numPendingPutCalls(collection) >= CALL_COLLECT_LIMIT) {
+						doPutCalls(collection);
+					}
+
+					scheduleCall();
+				}
+				
+			}).start();
+			
 		}
 
 		public DBObject callForId(String collection, ObjectId id) {
@@ -338,22 +453,13 @@ class RestStorageHandler implements Storage.DBHandler {
 				idSet.add(id);
 			}
 
-			synchronized (mSchedulerLock) {
-				if (mScheduled == null) {
-					mScheduled = mExecutor.schedule(mCheckForPendingCalls,
-							CALL_COLLECT_TIME_LIMIT, TimeUnit.SECONDS);
-				} else {
-					if (mScheduled.cancel(true)) {
-						mScheduled = mExecutor.schedule(mCheckForPendingCalls, CALL_COLLECT_TIME_LIMIT, TimeUnit.SECONDS);
-					}
-				}
-			}
+			scheduleCall();
 
 			Object lockForId = newLock(id);
 			synchronized (lockForId) {
 				// Call if we have enough requests collected
-				if (numPendingcalls(collection) >= CALL_COLLECT_LIMIT) {
-					doCall(collection);
+				if (numPendingIdCalls(collection) >= CALL_COLLECT_LIMIT) {
+					doGetByIdCalls(collection);
 				}
 
 				while (!mResults.containsKey(id)) {
@@ -381,6 +487,19 @@ class RestStorageHandler implements Storage.DBHandler {
 			}
 
 		}
+		
+		private void scheduleCall() {
+			synchronized (mSchedulerLock) {
+				if (mScheduled == null) {
+					mScheduled = mExecutor.schedule(mCheckForPendingCalls,
+							CALL_COLLECT_TIME_LIMIT, TimeUnit.SECONDS);
+				} else {
+					if (mScheduled.cancel(true)) {
+						mScheduled = mExecutor.schedule(mCheckForPendingCalls, CALL_COLLECT_TIME_LIMIT, TimeUnit.SECONDS);
+					}
+				}
+			}
+		}
 
 		private synchronized Object getCollectionLock(String collection) {
 			Object lock = mCollectionLocks.get(collection);
@@ -403,19 +522,55 @@ class RestStorageHandler implements Storage.DBHandler {
 				return newLock;
 			}
 		}
-
-		private void doCall(final String collection) {
-
+		
+		/**
+		 * Executes all pending PUT calls for the specified collection in a new {@link Thread}.
+		 * The new Thread will synchronize on the collection lock so that adding calls to the collection
+		 * is blocked.
+		 * 
+		 * @param collection The collection name.
+		 */
+		private void doPutCalls(final String collection) {
+			
 			Runnable r = new Runnable() {
 
 				public void run() {
-
-					synchronized (getCollectionLock(collection)) {
-
-						if (numPendingcalls(collection) == 0) {
-							return;
+					
+					synchronized(getCollectionLock(collection)) {
+					
+						Set<DBObject> putCalls = mPutCalls.get(collection);
+						
+						if(putCalls == null) return;
+						
+						BasicBSONList bsonList = new BasicBSONList();
+						for(DBObject call : putCalls) {
+							bsonList.add(call);
 						}
+						
+						if(mRest.put(BsonConverter.bsonObjectAsBytes(bsonList), REST_OBJECT_PATH, collection) != null) {
+							for(DBObject call : putCalls) {
+								mCache.putTransmitted(collection, call);
+							}
+							putCalls.clear();
+						}
+								
+					}
+				}
+				
+			};
+			
+			new Thread(r).start();
+			
+		}
+		
+		private void doGetByIdCalls(final String collection) {
+			
+			Runnable r = new Runnable() {
 
+				public void run() {
+		
+					synchronized(getCollectionLock(collection)) {
+					
 						Set<ObjectId> requestedIds = mIdCalls.get(collection);
 
 						// Build list of all ids to fetch
@@ -464,14 +619,13 @@ class RestStorageHandler implements Storage.DBHandler {
 							}
 
 						}
-
-
 					}
 				}
+				
 			};
-
+			
 			new Thread(r).start();
-
+			
 		}
 	}
 }

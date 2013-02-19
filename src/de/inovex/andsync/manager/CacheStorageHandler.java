@@ -18,8 +18,10 @@ package de.inovex.andsync.manager;
 import com.mongodb.DBObject;
 import com.mongodb.DBRef;
 import de.inovex.andsync.cache.Cache;
+import de.inovex.andsync.cache.CacheDocument;
 import de.inovex.jmom.FieldList;
 import de.inovex.jmom.Storage;
+import java.util.ArrayList;
 import java.util.Collection;
 import org.bson.types.ObjectId;
 
@@ -40,6 +42,7 @@ class CacheStorageHandler implements Storage.DBHandler {
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public void onSave(String string, DBObject dbo) {
 		/**
 		 * Save isn't done by the cache Storage, but by the REST storage. This is needed, because
@@ -54,14 +57,20 @@ class CacheStorageHandler implements Storage.DBHandler {
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public Collection<DBObject> onGet(String collection, FieldList fl) {
-		Collection<DBObject> dbos = mCache.getAll(collection);
+		Collection<CacheDocument> docs = mCache.getAll(collection);
+		Collection<DBObject> dbos = new ArrayList<DBObject>(docs.size());
+		for(CacheDocument doc : docs) {
+			dbos.add(doc.getDBObject());
+		}
 		return dbos;
 	}
 
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public DBRef onCreateRef(String collection, DBObject dbo) {
 		return new DBRef(null, collection, dbo.get("_id"));
 	}
@@ -69,13 +78,15 @@ class CacheStorageHandler implements Storage.DBHandler {
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public DBObject onFetchRef(DBRef dbref) {
-		return mCache.getById((ObjectId)dbref.getId());
+		return mCache.getById((ObjectId)dbref.getId()).getDBObject();
 	}
 
 	/**
 	 * {@inheritDoc} 
 	 */
+	@Override
 	public void onDelete(String collection, ObjectId objectId) {
 		mCache.delete(collection, objectId);
 	}

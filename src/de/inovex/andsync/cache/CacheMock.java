@@ -33,15 +33,24 @@ public class CacheMock implements Cache {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public Collection<DBObject> getAll(String collection) {
-		return new ArrayList<DBObject>(0);
+	public Collection<CacheDocument> getAll(String collection) {
+		return new ArrayList<CacheDocument>(0);
 	}
 
 	/**
 	 * {@inheritDoc}
 	 */
-	public DBObject getById(ObjectId id) {
+	@Override
+	public CacheDocument getById(ObjectId id) {
 		return null;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public Collection<CacheDocument> getUntransmitted() {
+		return new ArrayList<CacheDocument>(0);
 	}
 
 	/**
@@ -53,36 +62,49 @@ public class CacheMock implements Cache {
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public void put(String collection, List<DBObject> dbos) { }
 
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
+	public void putUpdated(String collection, DBObject dbo) { }
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public void putUpdated(String collection, List<DBObject> dbos) { }
+	
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
 	public void putTransmitted(String Collection, DBObject dbo) { }
 	
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public void putTransmitted(String collection, List<DBObject> dbos) { }
 	
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public void delete(String collection, ObjectId id) { }
 
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public void delete(String collection, long timestamp) {	}
 
 	/**
 	 * {@inheritDoc}
 	 */
-	public void transmitted(String collection, ObjectId id) { }
-	
-	/**
-	 * {@inheritDoc}
-	 */
+	@Override
 	public void commit() { }	
 	
 }

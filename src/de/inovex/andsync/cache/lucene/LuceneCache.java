@@ -15,6 +15,7 @@
  */
 package de.inovex.andsync.cache.lucene;
 
+import de.inovex.andsync.cache.CacheDocument;
 import android.util.Log;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.IndexSearcher;
@@ -29,10 +30,10 @@ import org.apache.lucene.analysis.Analyzer;
 import de.inovex.andsync.AndSyncApplication;
 import de.inovex.andsync.cache.Cache;
 import de.inovex.andsync.util.FileUtil;
-import de.inovex.andsync.util.TimeUtil;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.LinkedList;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexWriter;
@@ -94,7 +95,7 @@ public class LuceneCache implements Cache {
 				
 			} catch(IOException ex) {
 				if(mWriter != null) mWriter.close();
-				Log.w(LOG_TAG, String.format("Cache dir was corrupted, clearing cache. [Caused by: %s]", ex.getMessage()));
+				Log.w(LOG_TAG, String.format("Cache dir was corrupted, reseting cache. [Caused by: %s]", ex.getMessage()));
 				if(!retried) {
 					FileUtil.delete(cacheDir);
 					retried = true;
@@ -112,10 +113,10 @@ public class LuceneCache implements Cache {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public Collection<DBObject> getAll(String collection) {
+	public Collection<CacheDocument> getAll(String collection) {
 		
 		try {
-			TermQuery tq = new TermQuery(CacheDocument.getTermForCollection(collection));
+			TermQuery tq = new TermQuery(LuceneCacheDocument.getTermForCollection(collection));
 			if(mReader.numDocs() > 0) {
 				ScoreDoc[] docs = mSearcher.search(tq, mReader.numDocs()).scoreDocs;
 				return convertScoreDocs(docs);
@@ -124,7 +125,7 @@ public class LuceneCache implements Cache {
 			Log.e("Cannot get documents from cache. [Caused by: %s]", ex.getMessage());
 		}
 		
-		return new ArrayList<DBObject>(0);
+		return new ArrayList<CacheDocument>(0);
 		
 	}
 
@@ -132,13 +133,42 @@ public class LuceneCache implements Cache {
 	 * {@inheritDoc}
 	 */
 	@Override	
-	public DBObject getById(ObjectId id) {
+	public CacheDocument getById(ObjectId id) {
 		try {
-			return getDocById(id).getDBObject();
+			return getDocById(id);
 		} catch(IOException ex) {
 			Log.e("Cannot get document from cache. [Caused by: %s]", ex.getMessage());
 			return null;
 		}
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public Collection<CacheDocument> getUntransmitted() {
+		
+		List<CacheDocument> untransmitted = new LinkedList<CacheDocument>();
+		
+		ScoreDoc[] docs;
+		try {
+			docs = mSearcher.search(LuceneCacheDocument.getQueryForUntransmitted(), mReader.numDocs()).scoreDocs;
+		} catch (IOException ex) {
+			Log.w(LOG_TAG, String.format("Could not get list of untransmitted objects from cache. [Caused by: %s]", 
+					ex.getMessage()));
+			return untransmitted;
+		}
+		
+		for(ScoreDoc doc : docs) {
+			try {
+				LuceneCacheDocument cacheDoc = getCacheDoc(doc);
+				untransmitted.add(cacheDoc);
+			} catch (IOException ex) {
+				Log.w(LOG_TAG, String.format("Could not retreive untransmitted object. [Caused by: %s]", ex.getMessage()));
+			}
+		}
+		
+		return untransmitted;
 	}
 	
 	/**
@@ -147,7 +177,7 @@ public class LuceneCache implements Cache {
 	@Override
 	public void put(String collection, List<DBObject> dbos) {
 		for(DBObject dbo : dbos) {
-			putObject(collection, dbo, false);
+			putObject(collection, dbo, LuceneCacheDocument.TransmittedState.NEVER_TRANSMITTED);
 		}
 	}
 		
@@ -156,26 +186,47 @@ public class LuceneCache implements Cache {
 	 */
 	@Override
 	public void put(String collection, DBObject dbo) {
-		putObject(collection, dbo, false);
+		putObject(collection, dbo, LuceneCacheDocument.TransmittedState.NEVER_TRANSMITTED);
+		Log.w("ANDSYND", String.format("Put never transmitted object into cache [id: %s]", dbo.get(MONGO_ID)));
 	}
 
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
+	public void putUpdated(String collection, DBObject dbo) {
+		putObject(collection, dbo, LuceneCacheDocument.TransmittedState.UPDATE_NOT_TRANSMITTED);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public void putUpdated(String collection, List<DBObject> dbos) {
+		for(DBObject dbo : dbos) {
+			putObject(collection, dbo, LuceneCacheDocument.TransmittedState.UPDATE_NOT_TRANSMITTED);
+		}
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
 	public void putTransmitted(String Collection, DBObject dbo) {
-		putObject(Collection, dbo, true);
+		putObject(Collection, dbo, LuceneCacheDocument.TransmittedState.TRANSMITTED);
 	}
 	
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public void putTransmitted(String collection, List<DBObject> dbos) {
 		for(DBObject dbo : dbos) {
-			putObject(collection, dbo, true);
+			putObject(collection, dbo, LuceneCacheDocument.TransmittedState.TRANSMITTED);
 		}
 	}
 	
-	private synchronized void putObject(String collection, DBObject dbo, boolean transmitted) {
+	private synchronized void putObject(String collection, DBObject dbo, LuceneCacheDocument.TransmittedState transmitted) {
 		if(dbo == null) return;
 		ObjectId id = (ObjectId)dbo.get(MONGO_ID);
 		if(id == null) {
@@ -183,8 +234,7 @@ public class LuceneCache implements Cache {
 		}
 		
 		try {
-			CacheDocument cacheDoc = new CacheDocument(collection, dbo, 
-					transmitted ? TimeUtil.getTimestamp() : 0L);
+			LuceneCacheDocument cacheDoc = new LuceneCacheDocument(collection, dbo, transmitted);
 			mWriter.updateDocument(cacheDoc.getIdTerm(), cacheDoc);
 		} catch(Exception ex) {
 			Log.w(LOG_TAG, String.format("Cannot cache object with id %s. [Caused by: %s]", 
@@ -198,7 +248,7 @@ public class LuceneCache implements Cache {
 	@Override
 	public void delete(String collection, ObjectId id) {
 		try {
-			mWriter.deleteDocuments(CacheDocument.getTermForId(id));
+			mWriter.deleteDocuments(LuceneCacheDocument.getTermForId(id));
 		} catch (IOException ex) {
 			Log.w(LOG_TAG, String.format("Cannot remove object with id %s from cache. [Caused by: %s]", 
 					id.toString(), ex.getMessage()));
@@ -208,9 +258,10 @@ public class LuceneCache implements Cache {
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public void delete(String collection, long timestamp) {
 		try {
-			mWriter.deleteDocuments(CacheDocument.getQueryForDeletion(collection, timestamp));
+			mWriter.deleteDocuments(LuceneCacheDocument.getQueryForDeletion(collection, timestamp));
 		} catch (IOException ex) {
 			Log.w(LOG_TAG, String.format("Cannot remove objects from cache. [Caused by: %s]", ex.getMessage()));
 		}
@@ -219,23 +270,7 @@ public class LuceneCache implements Cache {
 	/**
 	 * {@inheritDoc}
 	 */
-	public synchronized void transmitted(String collection, ObjectId id) {
-		Log.i("ANDSYNC", "Mark ObjectId " + id.toString() + " as transmitted.");
-		
-		try {
-			CacheDocument doc = getDocById(id);
-			doc.setTransmitted(TimeUtil.getTimestamp());
-			mWriter.updateDocument(doc.getIdTerm(), doc);
-		} catch (IOException ex) {
-			Log.w(LOG_TAG, String.format("Error marking document with id %s in cache as transmitted. "
-					+ "[Caused by: %s]", id.toString(), ex.getMessage()));
-		}
-		
-	}	
-
-	/**
-	 * {@inheritDoc}
-	 */
+	@Override
 	public void commit() {
 		try {
 			mWriter.commit();
@@ -244,26 +279,30 @@ public class LuceneCache implements Cache {
 		}
 	}
 	
-	private CacheDocument getDocById(ObjectId id) throws IOException {
-		TermQuery tq = new TermQuery(CacheDocument.getTermForId(id));
+	private LuceneCacheDocument getDocById(ObjectId id) throws IOException {
+		TermQuery tq = new TermQuery(LuceneCacheDocument.getTermForId(id));
 		ScoreDoc[] sdocs = mSearcher.search(tq, 1).scoreDocs;
 		if(sdocs.length < 1) {
 			Log.e(LOG_TAG, String.format("Couldn't find object for id %s in cache.", id.toString()));
 			return null;
 		}
-		return new CacheDocument(mReader.document(sdocs[0].doc));
+		return getCacheDoc(sdocs[0]);
 	}
 	
-	private Collection<DBObject> convertScoreDocs(ScoreDoc[] scoreDocs) throws IOException {
+	private Collection<CacheDocument> convertScoreDocs(ScoreDoc[] scoreDocs) throws IOException {
 		
-		List<DBObject> dbos = new ArrayList<DBObject>(scoreDocs.length);
+		List<CacheDocument> dbos = new ArrayList<CacheDocument>(scoreDocs.length);
 		
 		for(ScoreDoc doc : scoreDocs) {
-			dbos.add(new CacheDocument(mReader.document(doc.doc)).getDBObject());
+			dbos.add(getCacheDoc(doc));
 		}
 		
 		return dbos;
 		
+	}
+	
+	private LuceneCacheDocument getCacheDoc(ScoreDoc doc) throws IOException {
+		return new LuceneCacheDocument(mReader.document(doc.doc));
 	}
 	
 }

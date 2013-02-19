@@ -34,7 +34,7 @@ public interface Cache {
 	 * @param collection The name of the collection.
 	 * @return A {@link Collection} of all objects from that collection.
 	 */
-	public Collection<DBObject> getAll(String collection);
+	public Collection<CacheDocument> getAll(String collection);
 	
 	/**
 	 * Returns a single {@link DBObject} for the given {@link ObjectId} or {@code null}, if the
@@ -43,7 +43,15 @@ public interface Cache {
 	 * @param id The id of the requested object.
 	 * @return The requested object or {@code null}.
 	 */
-	public DBObject getById(ObjectId id);
+	public CacheDocument getById(ObjectId id);
+	
+	/**
+	 * Returns all objects (as {@link CacheDocument}) that has either not been transmitted to server
+	 * at all, or has been updated and not yet transfered to the server.
+	 * 
+	 * @return A collection of all untransmitted documents.
+	 */
+	public Collection<CacheDocument> getUntransmitted();
 	
 	/**
 	 * Caches a {@link DBObject}. The server doesn't know this object yet.
@@ -62,6 +70,10 @@ public interface Cache {
 	 * @param dbos A list of objects to cache.
 	 */
 	public void put(String collection, List<DBObject> dbos);
+	
+	public void putUpdated(String collection, DBObject dbo);
+	
+	public void putUpdated(String collection, List<DBObject> dbos);
 	
 	/**
 	 * Caches a {@link DBObject}, but unlike {@link #put(java.lang.String, com.mongodb.DBObject) }
@@ -100,9 +112,7 @@ public interface Cache {
 	 *		that collection.
 	 */
 	public void delete(String collection, long timestamp);
-	
-	public void transmitted(String collection, ObjectId id);
-	
+
 	/**
 	 * Commits all changes made at the cache. This should be called, whenever a consistent 
 	 * cache state has been reached, so the cache knows, it can commit its changes now.
