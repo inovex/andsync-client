@@ -76,19 +76,72 @@ class RestStorageHandler implements Storage.DBHandler {
 		new Thread(new Runnable() {	
 			public void run() {
 			
-				// Get a list of al untransmitted objects
+				// Get a list of all untransmitted objects
 				Collection<CacheDocument> untransmitted = mCache.getUntransmitted();
 				for(CacheDocument doc : untransmitted) {
-					if(doc.getState() == CacheDocument.TransmittedState.NEVER_TRANSMITTED) {
-						newObject(doc.getCollection(), doc.getDBObject());
-					} else if(doc.getState() == CacheDocument.TransmittedState.UPDATE_NOT_TRANSMITTED) {
-						updateObject(doc.getCollection(), doc.getDBObject());
+					// Decide what to do with the object depending on its transmitted state
+					switch(doc.getState()) {
+						case DELETED:
+							deleteObject(doc.getCollection(), (ObjectId)doc.getDBObject().get(MONGO_ID));
+							break;
+						case NEVER_TRANSMITTED:
+							newObject(doc.getCollection(), doc.getDBObject());
+							break;
+						case UPDATE_NOT_TRANSMITTED:
+							updateObject(doc.getCollection(), doc.getDBObject());
+							break;
 					}
 				}
 				
 			}
 		}).start();
 		
+	}
+
+	/**
+	 * Updates the change of an object to the server via a POST call. The call will be stored in
+	 * the {@link #mCallCollector} so that multiple POST calls can be collected and bundled.
+	 * 
+	 * The call collector will make sure to mark the object as transmitted as soon as it has been.
+	 * 
+	 * This method will return immediately, before the object has been transmitted to the server.
+	 * 
+	 * @param collection
+	 * @param dbo 
+	 */
+	private void updateObject(final String collection, final DBObject dbo) {
+		mCallCollector.postCall(collection, dbo);
+	}
+
+	/**
+	 * Transfer an object to the server, that has just been created on that device and never
+	 * has been transfered to the server.
+	 * 
+	 * This will add a PUT call to the {@link #mCallCollector call collector}, so multiple PUT calls
+	 * can be collected and bundled. The object should have been put to cache (marked as never transmitted)
+	 * before this method is called. The call collector will take care of marking the object as
+	 * transmitted as soon as it has been.
+	 * 
+	 * This method will return immediately, before the object has been transmitted to the server.
+	 * 
+	 * @param collection The collection of that object.
+	 * @param dbo The object to transfer.
+	 */
+	private void newObject(final String collection, final DBObject dbo) {
+		mCallCollector.putCall(collection, dbo);
+	}
+	
+	/**
+	 * Send the server a notification to delete an object. This will add a DELETE call to the 
+	 * {@link #mCallCollector call collector}, so multiple DELETE calls can be collected and bundled.
+	 * The call collector is responsible for finally deleting the object from cache once it has been
+	 * transmitted to server.
+	 * 
+	 * @param collection The collection of that object.
+	 * @param id The {@link ObjectId id} of the object to delete.
+	 */
+	private void deleteObject(final String collection, final ObjectId id) {
+		mCallCollector.deleteCall(collection, id);
 	}
 
 	/**
@@ -122,29 +175,7 @@ class RestStorageHandler implements Storage.DBHandler {
 			newObject(collection, dbo);
 		}
 	}
-
-	private void updateObject(final String collection, final DBObject dbo) {
-		mCallCollector.postCall(collection, dbo);
-	}
-
-	/**
-	 * Transfer an object to the server, that has just been created on that device and never
-	 * has been transfered to the server.
-	 * 
-	 * This will add a PUT call to the {@link #mCallCollector call collector}, so multiple PUT calls
-	 * can be collected and bundled. The object should have been put to cache (marked as never transmitted)
-	 * before this method is called. The call collector will take care of marking the object as
-	 * transmitted as soon as it has been.
-	 * 
-	 * This method will return immediately, before the objects has been transmitted to the server.
-	 * 
-	 * @param collection The collection of that object.
-	 * @param dbo The object to transfer.
-	 */
-	private void newObject(final String collection, final DBObject dbo) {
-		mCallCollector.putCall(collection, dbo);
-	}
-
+	
 	public Collection<DBObject> onGet(final String collection, final FieldList fl) {
 
 		RestResponse response;
@@ -163,7 +194,7 @@ class RestStorageHandler implements Storage.DBHandler {
 		mCache.putTransmitted(collection, objects);
 		// Delete all objects from cache, that doesn't exist on the server anymore
 		// -> Haven't been updated in this session (so update timestamp is older than beginCacheUpdate
-		mCache.delete(collection, beginCacheUpdate);
+		mCache.deleted(collection, beginCacheUpdate);
 
 		return objects;
 
@@ -186,7 +217,7 @@ class RestStorageHandler implements Storage.DBHandler {
 	}
 
 	public void onDelete(String collection, ObjectId oi) {
-		mRest.delete(REST_OBJECT_PATH, collection, oi.toString());
+		deleteObject(collection, oi);
 	}
 
 	private interface RestCall {
@@ -313,6 +344,8 @@ class RestStorageHandler implements Storage.DBHandler {
 		 */
 		private Map<String, Set<DBObject>> mPostCalls = new ConcurrentHashMap<String, Set<DBObject>>();
 		
+		private Map<String, Set<ObjectId>> mDeleteCalls = new ConcurrentHashMap<String, Set<ObjectId>>();
+		
 		/**
 		 * The {@link DBObject DBObjects} returned from the server for each {@link ObjectId}.
 		 */
@@ -374,6 +407,13 @@ class RestStorageHandler implements Storage.DBHandler {
 						doGetByIdCalls(collection);
 					}
 				}
+				
+				// Check for pending deleted calls.
+				for(String collection : mDeleteCalls.keySet()) {
+					if(numPendingDeleteCalls(collection) > 0) {
+						doDeleteCalls(collection);
+					}
+				}
 
 				// Check if any calls are left over, if so reschedule the periodic check, if not
 				// don't do any further periodic check.
@@ -405,6 +445,9 @@ class RestStorageHandler implements Storage.DBHandler {
 			for(Set<DBObject> pending : mPutCalls.values()) {
 				if(pending.size() > 0) return true;
 			}
+			for(Set<ObjectId> pending : mDeleteCalls.values()) {
+				if(pending.size() > 0) return true;
+			}
 			return false;
 		}
 
@@ -420,6 +463,11 @@ class RestStorageHandler implements Storage.DBHandler {
 		
 		private int numPendingPostCalls(String collection) {
 			Set<DBObject> calls = mPostCalls.get(collection);
+			return calls != null ? calls.size() : 0;
+		}
+		
+		private int numPendingDeleteCalls(String collection) {
+			Set<?> calls = mDeleteCalls.get(collection);
 			return calls != null ? calls.size() : 0;
 		}
 		
@@ -467,6 +515,24 @@ class RestStorageHandler implements Storage.DBHandler {
 					
 				}
 				
+			}).start();
+			
+		}
+		
+		public void deleteCall(final String collection, final ObjectId id) {
+			
+			new Thread(new Runnable() {
+
+				public void run() {
+					savePendingCall(mDeleteCalls, collection, id);
+					
+					if(numPendingDeleteCalls(collection) >= CALL_COLLECT_LIMIT) {
+						doDeleteCalls(collection);
+					}
+					
+					scheduleCall();
+				}
+
 			}).start();
 			
 		}
@@ -563,7 +629,7 @@ class RestStorageHandler implements Storage.DBHandler {
 					
 						Set<DBObject> putCalls = mPutCalls.get(collection);
 						
-						if(putCalls == null) return;
+						if(putCalls == null || putCalls.size() <= 0) return;
 						
 						BasicBSONList bsonList = new BasicBSONList();
 						for(DBObject call : putCalls) {
@@ -574,6 +640,7 @@ class RestStorageHandler implements Storage.DBHandler {
 							for(DBObject call : putCalls) {
 								mCache.putTransmitted(collection, call);
 							}
+							mCache.commit();
 							putCalls.clear();
 						}
 								
@@ -593,7 +660,7 @@ class RestStorageHandler implements Storage.DBHandler {
 						
 						Set<DBObject> postCalls = mPostCalls.get(collection);
 						
-						if(postCalls == null) return;
+						if(postCalls == null || postCalls.size() <= 0) return;
 						
 						BasicBSONList bsonList = new BasicBSONList();
 						for(DBObject call : postCalls) {
@@ -604,6 +671,7 @@ class RestStorageHandler implements Storage.DBHandler {
 							for(DBObject call : postCalls) {
 								mCache.putTransmitted(collection, call);
 							}
+							mCache.commit();
 							postCalls.clear();
 						}
 						
@@ -613,6 +681,32 @@ class RestStorageHandler implements Storage.DBHandler {
 			}).start();
 
 		}
+		
+		/**
+		 * 
+		 * @param collection 
+		 */
+		private void doDeleteCalls(final String collection) {
+			new Thread(new Runnable() {
+
+				public void run() {
+					synchronized(getCollectionLock(collection)) {
+						Set<ObjectId> deletions = mDeleteCalls.get(collection);
+						
+						if(deletions == null || deletions.size() <= 0) return;
+						
+						for(ObjectId id : deletions) {
+							if(mRest.delete(REST_OBJECT_PATH, collection, id.toString()) != null) {
+								mCache.deleted(collection, id);
+							}
+						}
+						
+						deletions.clear();
+					}
+				}
+				
+			}).start();
+		}		
 		
 		private void doGetByIdCalls(final String collection) {
 			

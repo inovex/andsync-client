@@ -35,6 +35,7 @@ import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.NumericRangeQuery;
 import org.apache.lucene.search.Query;
+import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.util.BytesRef;
 import org.bson.types.ObjectId;
 
@@ -88,7 +89,7 @@ public class LuceneCacheDocument implements Iterable<IndexableField>, CacheDocum
 		}
 		
 		initializeFields(id, clazz, bson.bytes, updated.numericValue().longValue(), 
-				TransmittedState.values()[transmitted.numericValue().intValue()]);
+				TransmittedState.fromNumValue(transmitted.numericValue().intValue()));
 		
 	}
 	
@@ -113,7 +114,7 @@ public class LuceneCacheDocument implements Iterable<IndexableField>, CacheDocum
 		fields.put(DATA_ID, new StoredField(DATA_ID, bsonData));
 		
 		fields.put(UPDATE_ID, new LongField(UPDATE_ID, update, Field.Store.YES));
-		fields.put(TRANSMITTED_ID, new IntField(TRANSMITTED_ID, transmitted.ordinal(), Field.Store.YES));
+		fields.put(TRANSMITTED_ID, new IntField(TRANSMITTED_ID, transmitted.getNumValue(), Field.Store.YES));
 	}
 	
 	public DBObject getDBObject() {
@@ -126,7 +127,11 @@ public class LuceneCacheDocument implements Iterable<IndexableField>, CacheDocum
 
 	@Override
 	public TransmittedState getState() {
-		return TransmittedState.values()[fields.get(TRANSMITTED_ID).numericValue().intValue()];
+		return TransmittedState.fromNumValue(fields.get(TRANSMITTED_ID).numericValue().intValue());
+	}
+	
+	public void setTransmittedState(TransmittedState state) {
+		fields.put(TRANSMITTED_ID, new IntField(TRANSMITTED_ID, state.getNumValue(), Field.Store.YES));
 	}
 	
 	/**
@@ -155,8 +160,12 @@ public class LuceneCacheDocument implements Iterable<IndexableField>, CacheDocum
 		return new Term(KEY_ID, id.toString());
 	}
 
-	public static Term getTermForCollection(String collection) {
-		return new Term(CLASS_ID, collection);
+	public static Query getTermForCollection(String collection) {
+		BooleanQuery query = new BooleanQuery();
+		query.add(new TermQuery(new Term(CLASS_ID, collection)), Occur.MUST);
+		query.add(NumericRangeQuery.newIntRange(TRANSMITTED_ID, TransmittedState.DELETED.getNumValue(), 
+				TransmittedState.DELETED.getNumValue(), true, true), Occur.MUST_NOT);
+		return query;
 	}
 
 	public static Query getQueryForDeletion(String collection, long timestamp) {
@@ -169,8 +178,8 @@ public class LuceneCacheDocument implements Iterable<IndexableField>, CacheDocum
 	}
 	
 	public static Query getQueryForUntransmitted() {
-		return NumericRangeQuery.newIntRange(TRANSMITTED_ID, TransmittedState.NEVER_TRANSMITTED.ordinal(), 
-				TransmittedState.UPDATE_NOT_TRANSMITTED.ordinal(), true, true);
+		return NumericRangeQuery.newIntRange(TRANSMITTED_ID, 0, 
+				TransmittedState.TRANSMITTED.getNumValue(), true, false);
 	}
 	
 }

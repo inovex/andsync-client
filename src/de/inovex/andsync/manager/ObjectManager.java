@@ -163,6 +163,7 @@ public class ObjectManager {
 		Runnable r = new Runnable() {
 			public void run() {
 				mRestStorage.delete(obj);
+				mCache.commit();
 			}
 		};
 		

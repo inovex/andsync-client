@@ -93,13 +93,18 @@ public class CacheMock implements Cache {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void delete(String collection, ObjectId id) { }
+	public void markDeleted(String collection, ObjectId id) { }
 
 	/**
 	 * {@inheritDoc}
 	 */
+	public void deleted(String collection, ObjectId id) { }
+	
+	/**
+	 * {@inheritDoc}
+	 */
 	@Override
-	public void delete(String collection, long timestamp) {	}
+	public void deleted(String collection, long timestamp) {	}
 
 	/**
 	 * {@inheritDoc}

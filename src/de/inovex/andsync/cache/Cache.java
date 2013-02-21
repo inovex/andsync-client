@@ -71,8 +71,24 @@ public interface Cache {
 	 */
 	public void put(String collection, List<DBObject> dbos);
 	
+	/**
+	 * Caches a {@link DBObject DBObjects} that has been updated on the client, but not
+	 * yet transfered to the server.
+	 * 
+	 * @param collection The name of the collection that this object was or will be stored on the
+	 *		server. This should be the fully qualified class name of the object's class.
+	 * @param dbo The object to cache.
+	 */
 	public void putUpdated(String collection, DBObject dbo);
 	
+	/**
+	 * Caches a list of {@link DBObject DBObjects} that has been updated on the client, but not
+	 * yet  transfered to the server.
+	 * 
+	 * @param collection The name of the collection that this object was or will be stored on the
+	 *		server. This should be the fully qualified class name of the obejct's class.
+	 * @param dbos A list of objects to cache.
+	 */
 	public void putUpdated(String collection, List<DBObject> dbos);
 	
 	/**
@@ -95,23 +111,36 @@ public interface Cache {
 	public void putTransmitted(String collection, List<DBObject> dbos);
 	
 	/**
-	 * Deletes an {@link DBObject} from cache.
+	 * Mark an {@link DBObject} as deleted. This object shouldn't be returned in any further get
+	 * calls anymore, but the server doesn't know yet that this object has been deleted.
+	 * 
+	 * As soon as the deletion has been propagated to the server {@link #deleted(java.lang.String, org.bson.types.ObjectId)}
+	 * will be called for that {@link ObjectId}.
 	 * 
 	 * @param collection The name of the collection that this object was stored on the
 	 *		server. This should be the fully qualified class name of the obejct's class.
-	 * @param id The id of the object to delete.
+	 * @param id The id of the object to deleted.
 	 */
-	public void delete(String collection, ObjectId id);
+	public void markDeleted(String collection, ObjectId id);
+	
+	/**
+	 * Deletes an {@link DBObject} from cache. The deletion has already been propagated to the server.
+	 * 
+	 * @param collection The name of the collection that this object was stored on the
+	 *		server. This should be the fully qualified class name of the obejct's class.
+	 * @param id The id of the object to deleted.
+	 */
+	public void deleted(String collection, ObjectId id);
 	
 	/**
 	 * Deletes all {@link DBObject} from cache, that hasn't been updated since {@code timestamp}.
 	 * The cache itself is responsible to save updating timestamps for each object.
 	 * 
 	 * @param collection The collection that should be cleaned.
-	 * @param timestamp A UNIX timestamp indicating the oldest entry the cache shouldn't delete in
+	 * @param timestamp A UNIX timestamp indicating the oldest entry the cache shouldn't deleted in
 	 *		that collection.
 	 */
-	public void delete(String collection, long timestamp);
+	public void deleted(String collection, long timestamp);
 
 	/**
 	 * Commits all changes made at the cache. This should be called, whenever a consistent 

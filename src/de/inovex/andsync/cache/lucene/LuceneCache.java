@@ -15,6 +15,7 @@
  */
 package de.inovex.andsync.cache.lucene;
 
+import org.apache.lucene.search.Query;
 import de.inovex.andsync.cache.CacheDocument;
 import android.util.Log;
 import org.apache.lucene.search.ScoreDoc;
@@ -118,10 +119,10 @@ public class LuceneCache implements Cache {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public Collection<CacheDocument> getAll(String collection) {
+	public synchronized Collection<CacheDocument> getAll(String collection) {
 		
 		try {
-			TermQuery tq = new TermQuery(LuceneCacheDocument.getTermForCollection(collection));
+			Query tq = LuceneCacheDocument.getTermForCollection(collection);
 			if(mReader.numDocs() > 0) {
 				ScoreDoc[] docs = mSearcher.search(tq, getSearchLimit()).scoreDocs;
 				return convertScoreDocs(docs);
@@ -138,7 +139,7 @@ public class LuceneCache implements Cache {
 	 * {@inheritDoc}
 	 */
 	@Override	
-	public CacheDocument getById(ObjectId id) {
+	public synchronized CacheDocument getById(ObjectId id) {
 		try {
 			return getDocById(id);
 		} catch(IOException ex) {
@@ -151,7 +152,7 @@ public class LuceneCache implements Cache {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public Collection<CacheDocument> getUntransmitted() {
+	public synchronized Collection<CacheDocument> getUntransmitted() {
 		
 		List<CacheDocument> untransmitted = new LinkedList<CacheDocument>();
 		
@@ -180,7 +181,7 @@ public class LuceneCache implements Cache {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void put(String collection, List<DBObject> dbos) {
+	public synchronized void put(String collection, List<DBObject> dbos) {
 		for(DBObject dbo : dbos) {
 			putObject(collection, dbo, LuceneCacheDocument.TransmittedState.NEVER_TRANSMITTED);
 		}
@@ -190,16 +191,15 @@ public class LuceneCache implements Cache {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void put(String collection, DBObject dbo) {
+	public synchronized void put(String collection, DBObject dbo) {
 		putObject(collection, dbo, LuceneCacheDocument.TransmittedState.NEVER_TRANSMITTED);
-		Log.w("ANDSYND", String.format("Put never transmitted object into cache [id: %s]", dbo.get(MONGO_ID)));
 	}
 
 	/**
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void putUpdated(String collection, DBObject dbo) {
+	public synchronized void putUpdated(String collection, DBObject dbo) {
 		putObject(collection, dbo, LuceneCacheDocument.TransmittedState.UPDATE_NOT_TRANSMITTED);
 	}
 
@@ -207,7 +207,7 @@ public class LuceneCache implements Cache {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void putUpdated(String collection, List<DBObject> dbos) {
+	public synchronized void putUpdated(String collection, List<DBObject> dbos) {
 		for(DBObject dbo : dbos) {
 			putObject(collection, dbo, LuceneCacheDocument.TransmittedState.UPDATE_NOT_TRANSMITTED);
 		}
@@ -217,7 +217,7 @@ public class LuceneCache implements Cache {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void putTransmitted(String Collection, DBObject dbo) {
+	public synchronized void putTransmitted(String Collection, DBObject dbo) {
 		putObject(Collection, dbo, LuceneCacheDocument.TransmittedState.TRANSMITTED);
 	}
 	
@@ -225,13 +225,13 @@ public class LuceneCache implements Cache {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void putTransmitted(String collection, List<DBObject> dbos) {
+	public synchronized void putTransmitted(String collection, List<DBObject> dbos) {
 		for(DBObject dbo : dbos) {
 			putObject(collection, dbo, LuceneCacheDocument.TransmittedState.TRANSMITTED);
 		}
 	}
 	
-	private synchronized void putObject(String collection, DBObject dbo, LuceneCacheDocument.TransmittedState transmitted) {
+	private void putObject(String collection, DBObject dbo, LuceneCacheDocument.TransmittedState transmitted) {
 		if(dbo == null) return;
 		ObjectId id = (ObjectId)dbo.get(MONGO_ID);
 		if(id == null) {
@@ -251,11 +251,25 @@ public class LuceneCache implements Cache {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void delete(String collection, ObjectId id) {
+	public synchronized void markDeleted(String collection, ObjectId id) {
+		try {
+			LuceneCacheDocument doc = getDocById(id);
+			doc.setTransmittedState(CacheDocument.TransmittedState.DELETED);
+			mWriter.updateDocument(doc.getIdTerm(), doc);
+		} catch (IOException ex) {
+			Log.w(LOG_TAG, String.format("Cannot mark object with id %s as deleted in cache. [Caused by: %s]", 
+					id.toString(), ex.getMessage()));
+		}
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public synchronized void deleted(String collection, ObjectId id) {
 		try {
 			mWriter.deleteDocuments(LuceneCacheDocument.getTermForId(id));
 		} catch (IOException ex) {
-			Log.w(LOG_TAG, String.format("Cannot remove object with id %s from cache. [Caused by: %s]", 
+			Log.w(LOG_TAG, String.format("Could not delete object with id %s from cache. [Caused by: %s]",
 					id.toString(), ex.getMessage()));
 		}
 	}
@@ -264,7 +278,7 @@ public class LuceneCache implements Cache {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void delete(String collection, long timestamp) {
+	public synchronized void deleted(String collection, long timestamp) {
 		try {
 			mWriter.deleteDocuments(LuceneCacheDocument.getQueryForDeletion(collection, timestamp));
 		} catch (IOException ex) {
@@ -276,7 +290,7 @@ public class LuceneCache implements Cache {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void commit() {
+	public synchronized void commit() {
 		try {
 			mWriter.commit();
 		} catch (IOException ex) {

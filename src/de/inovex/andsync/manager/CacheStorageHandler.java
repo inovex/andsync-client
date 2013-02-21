@@ -80,7 +80,10 @@ class CacheStorageHandler implements Storage.DBHandler {
 	 */
 	@Override
 	public DBObject onFetchRef(DBRef dbref) {
-		return mCache.getById((ObjectId)dbref.getId()).getDBObject();
+		if(dbref == null) return null;
+		CacheDocument cd = mCache.getById((ObjectId)dbref.getId());
+		if(cd == null) return null;
+		return cd.getDBObject();
 	}
 
 	/**
@@ -88,7 +91,7 @@ class CacheStorageHandler implements Storage.DBHandler {
 	 */
 	@Override
 	public void onDelete(String collection, ObjectId objectId) {
-		mCache.delete(collection, objectId);
+		mCache.markDeleted(collection, objectId);
 	}
 	
 }

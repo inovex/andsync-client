@@ -23,10 +23,34 @@ import com.mongodb.DBObject;
  */
 public interface CacheDocument {
 	
+	/**
+	 * Represents the transmitted state of an object. This will change if
+	 * depending if the server knows about the object, changes of the object or its deletion.
+	 * 
+	 * The numeric value of each element is used to store in the cache.
+	 */
 	public enum TransmittedState {
-		NEVER_TRANSMITTED,
-		UPDATE_NOT_TRANSMITTED,
-		TRANSMITTED
+		NEVER_TRANSMITTED(0),
+		UPDATE_NOT_TRANSMITTED(1),
+		DELETED(2),
+		TRANSMITTED(100);
+		
+		private int mNumValue;
+		
+		public static TransmittedState fromNumValue(int value) {
+			for(TransmittedState state : TransmittedState.values()) {
+				if(state.getNumValue() == value) return state;
+			}
+			return null;
+		}
+		
+		TransmittedState(int numValue) {
+			mNumValue = numValue;
+		}
+		
+		public int getNumValue() {
+			return mNumValue;
+		}
 	};
 	
 	TransmittedState getState();
