@@ -155,7 +155,7 @@ public class LuceneCacheDocument implements Iterable<IndexableField>, CacheDocum
 	public Iterator<IndexableField> iterator() {
 		return fields.values().iterator();
 	}
-
+	
 	public static Term getTermForId(ObjectId id) {
 		return new Term(KEY_ID, id.toString());
 	}

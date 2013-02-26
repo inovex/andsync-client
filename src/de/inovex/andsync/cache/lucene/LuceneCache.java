@@ -57,8 +57,6 @@ public class LuceneCache implements Cache {
 	
 	private Directory mStore;
 	private IndexWriter mWriter;
-	private IndexReader mReader;
-	private IndexSearcher mSearcher;
 	
 	public LuceneCache() throws IOException {
 		
@@ -85,12 +83,8 @@ public class LuceneCache implements Cache {
 
 			try {
 				IndexWriterConfig config = new IndexWriterConfig(Version.LUCENE_41, a);
-				//config.setRAMBufferSizeMB(5);
 				mWriter = new IndexWriter(mStore, config);
 				mWriter.commit();
-			
-				mReader = DirectoryReader.open(mStore);
-				mSearcher = new IndexSearcher(mReader);
 				
 				cacheCreated = true;
 				
@@ -110,9 +104,46 @@ public class LuceneCache implements Cache {
 		
 	}
 	
-	private int getSearchLimit() {
-		int numDocs = mReader.numDocs();
+	/**
+	 * Returns an {@link IndexSearcher} instance to search for objects.
+	 * This instance must be passed to {@link #releaseSearcher(org.apache.lucene.search.IndexSearcher)}
+	 * when it isn't used anymore.
+	 * 
+	 * The current implementation creates a new instance each time this method is called, to make
+	 * sure the searcher always sees the newest index state.
+	 * 
+	 * @return An IndexSearcher instance.
+	 * @throws IOException
+	 */
+	private IndexSearcher getSearcher() throws IOException {
+		IndexReader reader = DirectoryReader.open(mWriter, true);
+		return new IndexSearcher(reader);
+	}
+	
+	/**
+	 * Releases an {@link IndexSearcher} after it has been used.
+	 * This must be called for each {@link IndexSearcher} retrieved via {@link #getSearcher()}.
+	 * After this method is called no method on that {@code IndexSearcher} must be called anymore.
+	 * 
+	 * @param searcher The {@link IndexSearcher} no longer needed.
+	 */
+	private void releaseSearcher(IndexSearcher searcher) {
+		if(searcher == null) return;
+		try {
+			searcher.getIndexReader().close();
+		} catch (IOException ex) {
+			Log.i(LOG_TAG, String.format("Couldn't close IndexReader successfully. [Caused by: %s]", 
+					ex.getMessage()));
+		}
+	}
+	
+	private int getSearchLimit(IndexSearcher searcher) {
+		int numDocs = searcher.getIndexReader().numDocs();
 		return numDocs > 0 ? numDocs : 1;
+	}
+	
+	private int getNumDocs(IndexSearcher searcher) {
+		return searcher.getIndexReader().numDocs();
 	}
 
 	/**
@@ -121,14 +152,18 @@ public class LuceneCache implements Cache {
 	@Override
 	public synchronized Collection<CacheDocument> getAll(String collection) {
 		
+		IndexSearcher searcher = null;
 		try {
+			searcher = getSearcher();
 			Query tq = LuceneCacheDocument.getTermForCollection(collection);
-			if(mReader.numDocs() > 0) {
-				ScoreDoc[] docs = mSearcher.search(tq, getSearchLimit()).scoreDocs;
-				return convertScoreDocs(docs);
+			if(getNumDocs(searcher) > 0) {
+				ScoreDoc[] docs = searcher.search(tq, getSearchLimit(searcher)).scoreDocs;
+				return convertScoreDocs(searcher, docs);
 			}
 		} catch (IOException ex) {
 			Log.e("Cannot get documents from cache. [Caused by: %s]", ex.getMessage());
+		} finally {
+			releaseSearcher(searcher);
 		}
 		
 		return new ArrayList<CacheDocument>(0);
@@ -157,22 +192,28 @@ public class LuceneCache implements Cache {
 		List<CacheDocument> untransmitted = new LinkedList<CacheDocument>();
 		
 		ScoreDoc[] docs;
+		IndexSearcher searcher = null;
 		try {
-			docs = mSearcher.search(LuceneCacheDocument.getQueryForUntransmitted(), getSearchLimit()).scoreDocs;
+			searcher = getSearcher();
+			docs = searcher.search(LuceneCacheDocument.getQueryForUntransmitted(), 
+					getSearchLimit(searcher)).scoreDocs;
 		} catch (IOException ex) {
 			Log.w(LOG_TAG, String.format("Could not get list of untransmitted objects from cache. [Caused by: %s]", 
 					ex.getMessage()));
+			releaseSearcher(searcher);
 			return untransmitted;
 		}
 		
 		for(ScoreDoc doc : docs) {
 			try {
-				LuceneCacheDocument cacheDoc = getCacheDoc(doc);
+				LuceneCacheDocument cacheDoc = getCacheDoc(searcher, doc);
 				untransmitted.add(cacheDoc);
 			} catch (IOException ex) {
 				Log.w(LOG_TAG, String.format("Could not retreive untransmitted object. [Caused by: %s]", ex.getMessage()));
 			}
 		}
+		
+		releaseSearcher(searcher);
 		
 		return untransmitted;
 	}
@@ -238,7 +279,14 @@ public class LuceneCache implements Cache {
 			throw new IllegalArgumentException("Cannot save object without an id.");
 		}
 		
-		try {
+		try {		
+			// If object has never been transmitted to server, but updated on client, don't set its 
+			// client state to UPDATED, but keep its never transmitted state, so it will be send
+			// to server via PUT and not via POST.
+			if(transmitted == CacheDocument.TransmittedState.UPDATE_NOT_TRANSMITTED
+					&& getDocById(id).getState() == CacheDocument.TransmittedState.NEVER_TRANSMITTED) {
+				transmitted = CacheDocument.TransmittedState.NEVER_TRANSMITTED;
+			}
 			LuceneCacheDocument cacheDoc = new LuceneCacheDocument(collection, dbo, transmitted);
 			mWriter.updateDocument(cacheDoc.getIdTerm(), cacheDoc);
 		} catch(Exception ex) {
@@ -254,8 +302,15 @@ public class LuceneCache implements Cache {
 	public synchronized void markDeleted(String collection, ObjectId id) {
 		try {
 			LuceneCacheDocument doc = getDocById(id);
-			doc.setTransmittedState(CacheDocument.TransmittedState.DELETED);
-			mWriter.updateDocument(doc.getIdTerm(), doc);
+			Log.w("ANDSYNC", "Mark Deleted " + id.toString() + " object: " + String.valueOf(doc));
+			if(doc != null && doc.getState() == CacheDocument.TransmittedState.NEVER_TRANSMITTED) {
+				// If document should be marked as deleted but never has been transmitted to server,
+				// just delete that object from cache.ok
+				mWriter.deleteDocuments(doc.getIdTerm());
+			} else if(doc != null) {
+				doc.setTransmittedState(CacheDocument.TransmittedState.DELETED);
+				mWriter.updateDocument(doc.getIdTerm(), doc);
+			}
 		} catch (IOException ex) {
 			Log.w(LOG_TAG, String.format("Cannot mark object with id %s as deleted in cache. [Caused by: %s]", 
 					id.toString(), ex.getMessage()));
@@ -267,6 +322,7 @@ public class LuceneCache implements Cache {
 	 */
 	public synchronized void deleted(String collection, ObjectId id) {
 		try {
+			Log.w("ANDSYNC", "Deleted " + id.toString());
 			mWriter.deleteDocuments(LuceneCacheDocument.getTermForId(id));
 		} catch (IOException ex) {
 			Log.w(LOG_TAG, String.format("Could not delete object with id %s from cache. [Caused by: %s]",
@@ -299,29 +355,35 @@ public class LuceneCache implements Cache {
 	}
 	
 	private LuceneCacheDocument getDocById(ObjectId id) throws IOException {
-		TermQuery tq = new TermQuery(LuceneCacheDocument.getTermForId(id));
-		ScoreDoc[] sdocs = mSearcher.search(tq, 1).scoreDocs;
-		if(sdocs.length < 1) {
-			Log.e(LOG_TAG, String.format("Couldn't find object for id %s in cache.", id.toString()));
-			return null;
+		IndexSearcher searcher = null;
+		try {
+			TermQuery tq = new TermQuery(LuceneCacheDocument.getTermForId(id));
+			searcher = getSearcher();
+			ScoreDoc[] sdocs = searcher.search(tq, 1).scoreDocs;
+			if(sdocs.length < 1) {
+				Log.e(LOG_TAG, String.format("Couldn't find object for id %s in cache.", id.toString()));
+				return null;
+			}
+			return getCacheDoc(searcher, sdocs[0]);
+		} finally {
+			releaseSearcher(searcher);
 		}
-		return getCacheDoc(sdocs[0]);
 	}
 	
-	private Collection<CacheDocument> convertScoreDocs(ScoreDoc[] scoreDocs) throws IOException {
+	private Collection<CacheDocument> convertScoreDocs(IndexSearcher searcher, ScoreDoc[] scoreDocs) throws IOException {
 		
 		List<CacheDocument> dbos = new ArrayList<CacheDocument>(scoreDocs.length);
 		
 		for(ScoreDoc doc : scoreDocs) {
-			dbos.add(getCacheDoc(doc));
+			dbos.add(getCacheDoc(searcher, doc));
 		}
 		
 		return dbos;
 		
 	}
 	
-	private LuceneCacheDocument getCacheDoc(ScoreDoc doc) throws IOException {
-		return new LuceneCacheDocument(mReader.document(doc.doc));
+	private LuceneCacheDocument getCacheDoc(IndexSearcher searcher, ScoreDoc doc) throws IOException {
+		return new LuceneCacheDocument(searcher.doc(doc.doc));
 	}
 	
 }
