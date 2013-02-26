@@ -16,6 +16,8 @@
 package de.inovex.andsync.rest;
 
 import java.net.URL;
+import java.util.List;
+import java.util.Map;
 
 /**
  *
@@ -89,6 +91,8 @@ public abstract class RestClient {
 		 * The response content.
 		 */
 		public final byte[] data;
+		
+		public final Map<String,List<String>> headers;
 
 		/**
 		 * Creates a new response with the given response code and data.
@@ -96,17 +100,10 @@ public abstract class RestClient {
 		 * @param responseCode HTTP response code.
 		 * @param responseData The content data of the response.
 		 */
-		public RestResponse(int responseCode, byte[] responseData) {
+		public RestResponse(int responseCode, byte[] responseData, Map<String,List<String>> headers) {
 			this.code = responseCode;
 			this.data = responseData;
-		}	
-		
-		/**
-		 * Creates a new response with the given response code.
-		 * The response data will be {@code null}.
-		 */
-		public RestResponse(int responseCode) {
-			this(responseCode, null);
+			this.headers = headers;
 		}
 		
 	}

@@ -15,6 +15,8 @@
  */
 package de.inovex.andsync.manager;
 
+import android.content.Context;
+import android.content.SharedPreferences;
 import java.util.concurrent.ScheduledFuture;
 import com.mongodb.BasicDBObject;
 import java.util.Map;
@@ -24,6 +26,7 @@ import com.mongodb.BasicDBList;
 import de.inovex.andsync.cache.Cache;
 import com.mongodb.DBObject;
 import com.mongodb.DBRef;
+import de.inovex.andsync.AndSyncApplication;
 import de.inovex.andsync.cache.CacheDocument;
 import de.inovex.andsync.rest.RestClient;
 import de.inovex.andsync.rest.RestClient.RestResponse;
@@ -33,6 +36,8 @@ import de.inovex.andsync.util.BsonConverter;
 import de.inovex.andsync.util.TimeUtil;
 import de.inovex.jmom.FieldList;
 import de.inovex.jmom.Storage;
+import java.net.HttpURLConnection;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -58,12 +63,15 @@ class RestStorageHandler implements Storage.DBHandler {
 	private RepeatingRestClient mRest;
 	private CallCollector mCallCollector;
 	private Cache mCache;
+	private SharedPreferences mPrefs;
 
 	public RestStorageHandler(RestClient restClient, Cache cache) {
 		assert restClient != null && cache != null;
 		this.mCallCollector = new CallCollector();
 		this.mRest = new RepeatingRestClient(restClient);
 		this.mCache = cache;
+		this.mPrefs = AndSyncApplication.getAppContext().getSharedPreferences(
+				RestStorageHandler.class.getName(), Context.MODE_PRIVATE);
 		untransmitted();
 	}
 	
@@ -177,24 +185,54 @@ class RestStorageHandler implements Storage.DBHandler {
 	}
 	
 	public Collection<DBObject> onGet(final String collection, final FieldList fl) {
-
-		RestResponse response;
-
-		response = mRest.get(REST_OBJECT_PATH, collection);
-
-		if (response.data == null) {
-			return null;
+		
+		// Get timestamp of last fetch (or 0 if never fetched before)
+		long lastFetched = mPrefs.getLong(collection, 0);
+		
+		RestResponse deletionRes = mRest.get(REST_META_PATH, collection, REST_META_DELETION_PATH);
+		
+		boolean refetchAll;
+		try {
+			refetchAll = deletionRes == null || Long.valueOf(new String(deletionRes.data)) > lastFetched;
+		} catch(Exception ex) {
+			refetchAll = true;
+		}
+			
+		RestResponse response = null;
+		
+		// Either fetch all objects (if objects got deleted, so we can check what to delete form cache later)
+		if(refetchAll) {
+			response = mRest.get(REST_OBJECT_PATH, collection);
+		} else {
+			response = mRest.get(REST_OBJECT_PATH, collection, REST_MTIME_PATH, String.valueOf(lastFetched));
 		}
 
-		final List<DBObject> objects = BsonConverter.fromBsonList(response.data);
-
+		try {
+			long lastModification = Long.valueOf(response.headers.get(HTTP_MODIFIED_HEADER).get(0));
+			// Store timestamp of the last modification (taken from http header) as last fetch,
+			// so next call will only get objects from that 
+			mPrefs.edit().putLong(collection, lastModification).commit();
+		} catch(Exception ex) {
+			Log.w(LOG_TAG, String.format("Could not save last modification time from server. "
+					+ "Client will fetch these objects from server again with the next call. "
+					+ "[Caused by: %s]", ex.getMessage()));
+		}
+		
+		final List<DBObject> objects = (response.data == null || response.code == HttpURLConnection.HTTP_NO_CONTENT)
+				? new ArrayList<DBObject>(0) : BsonConverter.fromBsonList(response.data);
+		
 		long beginCacheUpdate = TimeUtil.getTimestamp();
 
 		// Save all retrieved documents in cache
 		mCache.putTransmitted(collection, objects);
-		// Delete all objects from cache, that doesn't exist on the server anymore
-		// -> Haven't been updated in this session (so update timestamp is older than beginCacheUpdate
-		mCache.deleted(collection, beginCacheUpdate);
+		
+		if(refetchAll) {
+			// Delete all objects from cache, that doesn't exist on the server anymore
+			// -> Haven't been updated in this session (so update timestamp is older than beginCacheUpdate
+			// Only do this when we fetched all objects, otherwise we would delete here a lot of 
+			// objects that just hasn't been transfered in this call from the server, but still exists.
+			mCache.deleted(collection, beginCacheUpdate);
+		}
 
 		return objects;
 
@@ -306,7 +344,7 @@ class RestStorageHandler implements Storage.DBHandler {
 					}
 				}
 				retry++;
-			} while ((response == null || response.code != 200) && retry < MAX_RETRIES);
+			} while ((response == null || response.code < 200 || response.code >= 300) && retry < MAX_RETRIES);
 			return response;
 		}
 	}

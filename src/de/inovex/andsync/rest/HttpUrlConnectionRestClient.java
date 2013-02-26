@@ -124,7 +124,7 @@ class HttpUrlConnectionRestClient extends RestClient {
 			
 			byte[] content = toByteArray(in);
 			
-			return new RestResponse(responseCode, content);						
+			return new RestResponse(responseCode, content, http.getHeaderFields());						
 
 		} catch(IOException ex) {
 			throw new RestException(ex);
