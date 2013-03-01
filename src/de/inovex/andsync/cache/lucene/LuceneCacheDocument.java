@@ -175,10 +175,12 @@ public class LuceneCacheDocument implements Iterable<IndexableField>, CacheDocum
 
 	public static Query getQueryForDeletion(String collection, long timestamp) {
 		BooleanQuery query = new BooleanQuery();
+		query.add(new TermQuery(new Term(CLASS_ID, collection)), Occur.MUST);
 		query.add(NumericRangeQuery.newLongRange(UPDATE_ID, null, timestamp, true, false), Occur.MUST);
 		// Only delete old entries that has been transmitted to server already. So don't delete 
 		// entries that this client has created, but hadn't been transfered to server yet.
-		query.add(NumericRangeQuery.newLongRange(TRANSMITTED_ID, 0L, 0L, true, true), Occur.MUST_NOT);
+		query.add(NumericRangeQuery.newIntRange(TRANSMITTED_ID, CacheDocument.TransmittedState.NEVER_TRANSMITTED.getNumValue(), 
+				CacheDocument.TransmittedState.NEVER_TRANSMITTED.getNumValue(), true, true), Occur.MUST_NOT);
 		return query;
 	}
 	

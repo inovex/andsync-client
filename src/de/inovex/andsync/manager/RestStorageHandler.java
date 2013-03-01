@@ -723,11 +723,7 @@ class RestStorageHandler implements Storage.DBHandler {
 			}).start();
 
 		}
-		
-		/**
-		 * 
-		 * @param collection 
-		 */
+
 		private void doDeleteCalls(final String collection) {
 			new Thread(new Runnable() {
 
