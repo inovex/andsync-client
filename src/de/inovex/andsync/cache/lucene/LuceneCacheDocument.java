@@ -126,6 +126,11 @@ public class LuceneCacheDocument implements Iterable<IndexableField>, CacheDocum
 	}
 
 	@Override
+	public ObjectId getObjectId() {
+		return new ObjectId(fields.get(KEY_ID).stringValue());
+	}	
+
+	@Override
 	public TransmittedState getState() {
 		return TransmittedState.fromNumValue(fields.get(TRANSMITTED_ID).numericValue().intValue());
 	}

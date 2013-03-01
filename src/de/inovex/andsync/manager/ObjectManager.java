@@ -150,7 +150,8 @@ public class ObjectManager {
 		
 		long milli = System.currentTimeMillis();
 		
-		List<T> findAll = mCacheStorage.findAll(clazz);
+		List<T> findAll = new LazyList<T>(mCacheStorage, mCache, clazz);
+		//List<T> findAll = mCacheStorage.findAll(clazz);
 		
 		Log.w("ANDSYNC_TIME", " -- [findAll Cache] Elapsed Time: " + (System.currentTimeMillis() - milli)/1000.0 + "s / #Objects: " + findAll.size() + " --");
 		

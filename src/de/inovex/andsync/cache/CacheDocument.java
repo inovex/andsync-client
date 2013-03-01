@@ -16,6 +16,7 @@
 package de.inovex.andsync.cache;
 
 import com.mongodb.DBObject;
+import org.bson.types.ObjectId;
 
 /**
  * 
@@ -56,6 +57,8 @@ public interface CacheDocument {
 	TransmittedState getState();
 	
 	String getCollection();
+	
+	ObjectId getObjectId();
 	
 	DBObject getDBObject();
 	

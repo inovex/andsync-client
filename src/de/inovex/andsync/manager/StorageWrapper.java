@@ -20,6 +20,7 @@ import de.inovex.jmom.Storage;
 import de.inovex.jmom.Storage.Cache;
 import java.util.ArrayList;
 import java.util.List;
+import org.bson.types.ObjectId;
 
 /**
  *
@@ -71,6 +72,10 @@ public class StorageWrapper {
 
 	public <T> List<T> findAll(Class<T> clazz) {
 		return (this.mStorage != null) ? mStorage.findAll(clazz) : new ArrayList<T>();
+	}
+
+	public <T> T findByObjectId(Class<T> clazz, ObjectId id) {
+		return (this.mStorage != null) ? mStorage.findByObjectId(clazz, id): null;
 	}
 
 	public void delete(Object obj) {

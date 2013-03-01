@@ -238,6 +238,10 @@ class RestStorageHandler implements Storage.DBHandler {
 
 	}
 
+	public DBObject onGetById(String collection, ObjectId id) {
+		return mCallCollector.callForId(collection, id);
+	}
+
 	public DBRef onCreateRef(String collection, DBObject dbo) {
 		return new DBRef(null, collection, dbo.get("_id"));
 	}

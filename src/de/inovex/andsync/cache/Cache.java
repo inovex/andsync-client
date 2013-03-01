@@ -37,6 +37,14 @@ public interface Cache {
 	public Collection<CacheDocument> getAll(String collection);
 	
 	/**
+	 * Returns {@link ObjectId ObjectIds} of all objects inside a specific collection.
+	 * 
+	 * @param collection The name of the collection.
+	 * @return A {@link Collection} of all {@link ObjectId ObjectIds} in that collection.
+	 */
+	public Collection<ObjectId> getAllIds(String collection);
+	
+	/**
 	 * Returns a single {@link DBObject} for the given {@link ObjectId} or {@code null}, if the
 	 * cache doesn't have that document.
 	 * 

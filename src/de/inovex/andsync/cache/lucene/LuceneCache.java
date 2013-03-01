@@ -161,7 +161,7 @@ public class LuceneCache implements Cache {
 				return convertScoreDocs(searcher, docs);
 			}
 		} catch (IOException ex) {
-			Log.e("Cannot get documents from cache. [Caused by: %s]", ex.getMessage());
+			Log.e(LOG_TAG, String.format("Cannot get documents from cache. [Caused by: %s]", ex.getMessage()));
 		} finally {
 			releaseSearcher(searcher);
 		}
@@ -169,6 +169,33 @@ public class LuceneCache implements Cache {
 		return new ArrayList<CacheDocument>(0);
 		
 	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public Collection<ObjectId> getAllIds(String collection) {
+		IndexSearcher searcher = null;
+		try {
+			searcher  = getSearcher();
+			Query tq = LuceneCacheDocument.getTermForCollection(collection);
+			if(getNumDocs(searcher) > 0) {
+				ScoreDoc[] docs = searcher.search(tq, getSearchLimit(searcher)).scoreDocs;
+				List<ObjectId> ids = new ArrayList<ObjectId>(docs.length);
+				for(ScoreDoc doc : docs) {
+					ids.add(getCacheDoc(searcher, doc).getObjectId());
+				}
+				return ids;
+			}
+		} catch(IOException ex) {
+			Log.w(LOG_TAG, String.format("Cannot load all ids from cache. [Caused by: %s]", ex.getMessage()));
+		} finally {
+			releaseSearcher(searcher);
+		}
+		
+		return new ArrayList<ObjectId>(0);
+	}
+	
 
 	/**
 	 * {@inheritDoc}

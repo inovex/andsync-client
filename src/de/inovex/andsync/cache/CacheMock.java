@@ -41,6 +41,14 @@ public class CacheMock implements Cache {
 	 * {@inheritDoc}
 	 */
 	@Override
+	public Collection<ObjectId> getAllIds(String collection) {
+		return new ArrayList<ObjectId>(0);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
 	public CacheDocument getById(ObjectId id) {
 		return null;
 	}

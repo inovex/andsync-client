@@ -70,6 +70,15 @@ class CacheStorageHandler implements Storage.DBHandler {
 	/**
 	 * {@inheritDoc}
 	 */
+	public DBObject onGetById(String string, ObjectId id) {
+		CacheDocument doc = mCache.getById(id);
+		if(doc == null) return null;
+		return doc.getDBObject();
+	}	
+
+	/**
+	 * {@inheritDoc}
+	 */
 	@Override
 	public DBRef onCreateRef(String collection, DBObject dbo) {
 		return new DBRef(null, collection, dbo.get("_id"));
