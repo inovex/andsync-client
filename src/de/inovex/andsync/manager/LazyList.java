@@ -15,7 +15,6 @@
  */
 package de.inovex.andsync.manager;
 
-import android.util.Log;
 import android.util.SparseArray;
 import de.inovex.andsync.cache.Cache;
 import java.util.ArrayList;
@@ -99,6 +98,7 @@ public class LazyList<T> implements List<T> {
 	public synchronized void clear() {
 		mObjects.clear();
 		mIds.clear();
+		mIdLocks.clear();
 	}
 
 	public boolean contains(Object obj) {
@@ -126,8 +126,11 @@ public class LazyList<T> implements List<T> {
 		
 		// If null was added to the list (so no id available for a null object) just return null
 		if(id == null && obj == null) return null;
+		// While we don't have the object yet, await for it
 		while(obj == null) {
+			// If there is no id anymore to fetch (and no object) return null
 			if(id == null) return null;
+			// Wait on the lock for that object to fetch
 			synchronized(lock) {
 				try {
 					lock.wait(2000);
@@ -135,6 +138,10 @@ public class LazyList<T> implements List<T> {
 					Logger.getLogger(LazyList.class.getName()).log(Level.SEVERE, null, ex);
 				}
 			}
+			// Get new id, lock and object for the index.
+			// That should never return any other id then the call at the start of this method,
+			// since all modification methods of this list are synchronized, we just call this
+			// to make really sure, this loop won't result in a dead lock.
 			id = mIds.get(index);
 			lock = mIdLocks.get(id);
 			obj = mObjects.get(index);
@@ -144,26 +151,72 @@ public class LazyList<T> implements List<T> {
 		
 	}
 
-	public int indexOf(Object arg0) {
-		throw new UnsupportedOperationException("Not supported yet.");
+	/**
+	 * {@inheritDoc}
+	 */
+	public synchronized int indexOf(Object obj) {
+		int size = size();
+		if(obj == null) {
+			for(int i = 0; i < size; i++) {
+				if(get(i) == null) {
+					return i;
+				}
+			}
+		} else {
+			for(int i = 0; i < size; i++) {
+				if(obj.equals(get(i))) {
+					return i;
+				}
+			}
+		}
+		return -1;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 */
 	public synchronized boolean isEmpty() {
 		return mIds.isEmpty();
 	}
 
+	/**
+	 * {@inheritDoc}
+	 */
 	public Iterator<T> iterator() {
 		return listIterator(0);
 	}
 
-	public synchronized int lastIndexOf(Object arg0) {
-		throw new UnsupportedOperationException("Not supported yet.");
+	/**
+	 * {@inheritDoc}
+	 */
+	public synchronized int lastIndexOf(Object obj) {
+		int size = size();
+		if(obj == null) {
+			for(int i = size - 1; i >= 0; i++) {
+				if(get(i) == null) {
+					return i;
+				}
+			}
+		} else {
+			for(int i = size - 1; i >= 0; i++) {
+				if(obj.equals(get(i))) {
+					return i;
+				}
+			}
+		}
+		return -1;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 */
 	public ListIterator<T> listIterator() {
 		return listIterator(0);
 	}
 
+	/**
+	 * {@inheritDoc}
+	 */
 	public ListIterator<T> listIterator(int position) {
 		return new LazyIterator(position);
 	}
@@ -194,6 +247,9 @@ public class LazyList<T> implements List<T> {
 		}
 	}
 
+	/**
+	 * {@inheritDoc}
+	 */
 	public synchronized boolean remove(Object obj) {
 		if(obj == null) {
 			for(int i = 0; i < size(); i++) {
@@ -222,28 +278,49 @@ public class LazyList<T> implements List<T> {
 		return false;
 	}
 
+	/**
+	 * Not implemented yet.
+	 */
 	public boolean removeAll(Collection<?> arg0) {
+		// TODO: Optional operation, should be implemented
 		throw new UnsupportedOperationException("Not supported yet.");
 	}
 
+	/**
+	 * Not implemented yet.
+	 */
 	public boolean retainAll(Collection<?> arg0) {
+		// TODO: Optional operation, should be implemented
 		throw new UnsupportedOperationException("Not supported yet.");
 	}
 
+	/**
+	 * {@inheritDoc}
+	 */
 	public synchronized T set(int index, T obj) {
 		mObjects.put(index, obj);
 		mIds.set(index, null);
 		return obj;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 */
 	public int size() {
 		return mIds.size();
 	}
 
+	/**
+	 * Not implemented yet.
+	 */
 	public List<T> subList(int arg0, int arg1) {
+		// TODO: non optional operation! must be implemented.
 		throw new UnsupportedOperationException("Not supported yet.");
 	}
 
+	/**
+	 * {@inheritDoc} 
+	 */
 	public synchronized Object[] toArray() {
 		Object[] out = new Object[mIds.size()];
 		for(int i = 0; i < mIds.size(); i++) {
@@ -252,6 +329,9 @@ public class LazyList<T> implements List<T> {
 		return out;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 */
 	@SuppressWarnings("unchecked")
 	public synchronized <T> T[] toArray(T[] array) {
 		return (T[])toArray();
