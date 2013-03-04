@@ -16,6 +16,7 @@
 package de.inovex.andsync.manager;
 
 import android.util.SparseArray;
+import de.inovex.andsync.AndSync;
 import de.inovex.andsync.cache.Cache;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -79,33 +80,77 @@ public class LazyList<T> implements List<T> {
 		mObjects.put(index, obj);
 		// Add null for that object to id list
 		mIds.add(index, null);
+		AndSync.save(obj);
 	}
 
 	public synchronized boolean add(T obj) {
 		mObjects.put(mIds.size(), obj);
 		mIds.add(null);
+		AndSync.save(obj);
 		return true;
 	}
 
-	public boolean addAll(int arg0, Collection<? extends T> arg1) {
-		throw new UnsupportedOperationException("Not supported yet.");
+	/**
+	 * {@inheritDoc}
+	 */
+	public synchronized boolean addAll(int position, Collection<? extends T> objs) {
+		
+		int size = size();
+		if(position < 0 || position > size) {
+			throw new IndexOutOfBoundsException();
+		}
+
+		if(objs.isEmpty()) {
+			return false;
+		}
+		
+		// Move all objects from inserted position to make space for new objects
+		int offset = objs.size();
+		for(int i = mIds.size() + (offset - 1); i > position; i--) {
+			mObjects.put(i, mObjects.get(i - offset));
+		}
+		
+		Iterator<? extends T> iterator = objs.iterator();
+		for(int i = position; iterator.hasNext(); i++) {
+			T obj = iterator.next();
+			mObjects.put(i, obj);
+			mIds.add(i, null);
+		}
+		
+		AndSync.saveMultiple(objs);
+		
+		return true;
+	
 	}
 
-	public boolean addAll(Collection<? extends T> arg0) {
-		throw new UnsupportedOperationException("Not supported yet.");
+	/**
+	 * {@inheritDoc}
+	 */
+	public synchronized boolean addAll(Collection<? extends T> objs) {
+		return addAll(size(), objs);
 	}
 
+	/**
+	 * {@inheritDoc}
+	 */
 	public synchronized void clear() {
 		mObjects.clear();
 		mIds.clear();
 		mIdLocks.clear();
 	}
 
+	/**
+	 * {@inheritDoc}
+	 */
 	public boolean contains(Object obj) {
-		throw new UnsupportedOperationException("Not supported yet.");
+		return indexOf(obj) >= 0;
 	}
 
+	/**
+	 * Not yet implemented.
+	 */
 	public boolean containsAll(Collection<?> arg0) {
+		// TODO: non optional operation! must be implemented.
 		throw new UnsupportedOperationException("Not supported yet.");
 	}
 
@@ -142,8 +187,8 @@ public class LazyList<T> implements List<T> {
 			// That should never return any other id then the call at the start of this method,
 			// since all modification methods of this list are synchronized, we just call this
 			// to make really sure, this loop won't result in a dead lock.
-			id = mIds.get(index);
-			lock = mIdLocks.get(id);
+			//id = mIds.get(index);
+			//lock = mIdLocks.get(id);
 			obj = mObjects.get(index);
 		}
 		
@@ -222,27 +267,19 @@ public class LazyList<T> implements List<T> {
 	}
 
 	/**
-	 * Removes an object from the list and maybe return that object.
-	 * Since this list implements lazy loading the element is only returned if it already has been
-	 * loaded. If the object has not been loaded yet, it will be removed and {@code null} will be
-	 * returned.
-	 * 
-	 * If you need to work on the object afterwards, retrieve it with a call to {@link #get(int)}.
-	 * This method will wait until the object has been loaded.
-	 * 
-	 * @param index The index of the object to delete.
-	 * @return The removed object or {@code null} if it hasn't been loaded yet.
+	 * {@inheritDoc}
 	 */
 	public synchronized T remove(int index) {
 		if(index < 0 || index >= size()) {
 			throw new IndexOutOfBoundsException();
 		}
 		ObjectId id = mIds.get(index);
+		T obj = get(index);
 		synchronized(mIdLocks.get(id)) {
 			mIds.remove(id);
 			mIdLocks.remove(id);
-			T obj = mObjects.get(index);
 			mObjects.remove(index);
+			AndSync.delete(obj);
 			return obj;
 		}
 	}
@@ -271,6 +308,7 @@ public class LazyList<T> implements List<T> {
 					mObjects.remove(size - 1);
 					ObjectId id = mIds.remove(i);
 					mIdLocks.remove(id);
+					AndSync.delete(obj);
 					return true;
 				}
 			}
@@ -298,6 +336,9 @@ public class LazyList<T> implements List<T> {
 	 * {@inheritDoc}
 	 */
 	public synchronized T set(int index, T obj) {
+		if(!contains(obj)) {
+			AndSync.save(obj);
+		}
 		mObjects.put(index, obj);
 		mIds.set(index, null);
 		return obj;
@@ -313,7 +354,7 @@ public class LazyList<T> implements List<T> {
 	/**
 	 * Not implemented yet.
 	 */
-	public List<T> subList(int arg0, int arg1) {
+	public List<T> subList(int from, int to) {
 		// TODO: non optional operation! must be implemented.
 		throw new UnsupportedOperationException("Not supported yet.");
 	}

@@ -131,6 +131,13 @@ public class ObjectManager {
 	
 	public <T> List<T> findAll(final Class<T> clazz) {
 		
+		long milli = System.currentTimeMillis();
+
+		// Create a new lazy list, that will be used to load the cache data in background
+		final List<T> findAll = new LazyList<T>(mCacheStorage, mCache, clazz);
+		
+		Log.w("ANDSYNC_TIME", " -- [findAll Cache] Elapsed Time: " + (System.currentTimeMillis() - milli)/1000.0 + "s / #Objects: " + findAll.size() + " --");
+		
 		Runnable r = new Runnable() {
 			public void run() {
 				
@@ -147,13 +154,6 @@ public class ObjectManager {
 		};
 		
 		mExecutor.submit(r);
-		
-		long milli = System.currentTimeMillis();
-		
-		List<T> findAll = new LazyList<T>(mCacheStorage, mCache, clazz);
-		//List<T> findAll = mCacheStorage.findAll(clazz);
-		
-		Log.w("ANDSYNC_TIME", " -- [findAll Cache] Elapsed Time: " + (System.currentTimeMillis() - milli)/1000.0 + "s / #Objects: " + findAll.size() + " --");
 		
 		return findAll;
 		

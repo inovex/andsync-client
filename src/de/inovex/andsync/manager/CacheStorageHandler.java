@@ -59,12 +59,13 @@ class CacheStorageHandler implements Storage.DBHandler {
 	 */
 	@Override
 	public Collection<DBObject> onGet(String collection, FieldList fl) {
-		Collection<CacheDocument> docs = mCache.getAll(collection);
-		Collection<DBObject> dbos = new ArrayList<DBObject>(docs.size());
-		for(CacheDocument doc : docs) {
-			dbos.add(doc.getDBObject());
-		}
-		return dbos;
+		/**
+		 * This should never be called. If a list of all objects in cache should be retrieved
+		 * a {@link LazyList} should be used. That list takes care of loading the elements in background
+		 * and not everything at the beginning.
+		 */
+		assert false;
+		return null;
 	}
 
 	/**
