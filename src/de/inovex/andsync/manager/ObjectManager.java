@@ -147,9 +147,13 @@ public class ObjectManager {
 				
 				// Commit cache changes since we have not all objects from that fetch
 				mCache.commit();
+				
 				// TODO: Remove time recording
 				Log.w("ANDSYNC_TIME", "-- [findAll REST] Elapsed Time: " + (System.currentTimeMillis() - beforeUpdate)/1000.0 + "s / #Objects: " + objs.size() + " --");
-				mListeners.updateListener(clazz, objs);
+				
+				List<T> objects = new LazyList<T>(mCacheStorage, mCache, clazz);
+				mListeners.updateListener(clazz, objects);
+
 			}
 		};
 		

@@ -192,14 +192,16 @@ class RestStorageHandler implements Storage.DBHandler {
 		RestResponse deletionRes = mRest.get(REST_META_PATH, collection, REST_META_DELETION_PATH);
 		
 		boolean refetchAll;
+		long lastDeletion = 0;
 		try {
-			refetchAll = deletionRes == null || Long.valueOf(new String(deletionRes.data)) > lastFetched;
+			lastDeletion = Long.valueOf(new String(deletionRes.data));
+			refetchAll = deletionRes == null || lastDeletion > lastFetched;
 		} catch(Exception ex) {
 			refetchAll = true;
 		}
-			
+
 		RestResponse response = null;
-		
+
 		// Either fetch all objects (if objects got deleted, so we can check what to delete form cache later)
 		if(refetchAll) {
 			response = mRest.get(REST_OBJECT_PATH, collection);
@@ -208,7 +210,10 @@ class RestStorageHandler implements Storage.DBHandler {
 		}
 
 		try {
-			long lastModification = Long.valueOf(response.headers.get(HTTP_MODIFIED_HEADER).get(0));
+			long lastModification = Math.max(
+					Long.valueOf(response.headers.get(HTTP_MODIFIED_HEADER).get(0)),
+					lastDeletion);
+			
 			// Store timestamp of the last modification (taken from http header) as last fetch,
 			// so next call will only get objects from that 
 			mPrefs.edit().putLong(collection, lastModification).commit();
