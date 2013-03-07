@@ -168,7 +168,7 @@ class RestStorageHandler implements Storage.DBHandler {
 	 * @param dbo The object to save.
 	 */
 	@Override
-	public void onSave(final String collection, final DBObject dbo) {
+	public void onSave(final String collection, final DBObject dbo, FieldList fl) {
 		if (dbo.containsField(MONGO_ID)) {
 			// Object already has an id, update object
 			// Put the object also in cache (see CacheStorageHandler.onSave() for explanation)

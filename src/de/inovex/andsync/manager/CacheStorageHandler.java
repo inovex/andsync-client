@@ -21,7 +21,6 @@ import de.inovex.andsync.cache.Cache;
 import de.inovex.andsync.cache.CacheDocument;
 import de.inovex.jmom.FieldList;
 import de.inovex.jmom.Storage;
-import java.util.ArrayList;
 import java.util.Collection;
 import org.bson.types.ObjectId;
 
@@ -43,7 +42,7 @@ class CacheStorageHandler implements Storage.DBHandler {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void onSave(String string, DBObject dbo) {
+	public void onSave(String string, DBObject dbo, FieldList fl) {
 		/**
 		 * Save isn't done by the cache Storage, but by the REST storage. This is needed, because
 		 * the REST storage generates the ObjectIds for new objects, but the cache needs this id
