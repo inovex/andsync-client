@@ -89,25 +89,48 @@ public class AndSync {
 		sManager.saveMultiple(objects);
 	}
 
-	public static <T> List<T> findAll(Class<T> clazz) {
+	public static <T> List<T> findAll(Class<T> clazz, UpdateListener<T> listener) {
 		Log.w("ANDSYNC", "findAll " + clazz.getName());
 		checkState();
-		return sManager.findAll(clazz);
+		return sManager.findAll(clazz, listener);
 	}
 
 	public static void delete(Object obj) {
 		checkState();
 		sManager.delete(obj);
 	}
-
-	public static void registerListener(ObjectListener listener, Class<?>... classes) {
-		Log.w("ANDSYNC", "registerListener");
-		checkState();
-		sManager.registerListener(listener, classes);
-	}
-
-	public static void removeListener(ObjectListener listener) {
-		checkState();
-		sManager.removeListener(listener);
+	
+	public interface UpdateListener<T> {
+		
+		/**
+		 * Will be called when new data has been loaded. The new complete list of data will be
+		 * passed to this method. You can just use this instead of the previous used one.
+		 * 
+		 * There are several constraints you need to respect when implementing this method:
+		 * <ul><li>
+		 * The framework might never call this method (if there is no new data), but it can
+		 * also call it multiple times, even if you called {@link #findAll(java.lang.Class, de.inovex.andsync.AndSync.UpdateListener)}
+		 * just one time.
+		 * </li><li>
+		 * It will always be called from another thread, then you called {@link #findAll(java.lang.Class, de.inovex.andsync.AndSync.UpdateListener)}.
+		 * If you want to update UI, you have to make sure to do that back in your UI thread and
+		 * NOT the one this method will be called.
+		 * </li></ul>
+		 * 
+		 * @param data An updated version of the data you requested with {@link #findAll(java.lang.Class, de.inovex.andsync.AndSync.UpdateListener)}.
+		 *		This data is at the time of calling complete, so you don't need to merge this data with
+		 *		previously retrieved data.
+		 */
+		void onData(List<T> data);
+		
+		/**
+		 * Will be called by the framework when new data is available at the server.
+		 * Normally you just call {@link #findAll(java.lang.Class, de.inovex.andsync.AndSync.UpdateListener)}
+		 * in the implementation of this method, and pass it this {@link UpdateListener} as parameter.
+		 * So the framework will just collect the new data and pass it the the same {@link #onData(java.util.List)}
+		 * method, that anyway needs to handle new data.
+		 */
+		void onUpdate();
+		
 	}
 }

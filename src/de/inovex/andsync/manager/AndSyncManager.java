@@ -15,6 +15,8 @@
  */
 package de.inovex.andsync.manager;
 
+import java.util.Iterator;
+import java.util.Set;
 import de.inovex.andsync.cache.Cache;
 import de.inovex.andsync.Config;
 import java.util.concurrent.ExecutorService;
@@ -24,6 +26,8 @@ import de.inovex.andsync.cache.CacheMock;
 import de.inovex.andsync.cache.lucene.LuceneCache;
 import de.inovex.andsync.rest.RestClient;
 import de.inovex.jmom.Storage;
+import java.lang.ref.WeakReference;
+import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.Executors;
 import static de.inovex.andsync.Constants.*;
@@ -53,14 +57,18 @@ public class AndSyncManager {
 	
 	private ExecutorService mExecutor = Executors.newCachedThreadPool();
 	
-	private ListenerHandler mListeners = new ListenerHandler();
-		
+	/**
+	 * The list of update listener. This must be instantiated with a type that supports the remove
+	 * method on its iterator.
+	 */
+	private Set<WeakReference<AndSync.UpdateListener<?>>> mUpdateListener;
+	
 	public AndSyncManager(Config config) {
-		
-		Log.w("ANDSYNC", "Start service constructor!");
-		
+	
 		if(config == null) 
 			throw new IllegalArgumentException("Config isn't allowed to be null.");
+		
+		this.mUpdateListener = new HashSet<WeakReference<AndSync.UpdateListener<?>>>();
 		
 		this.mConfig = config;
 		this.mPushManager = new PushManager(config.getGcmKey());
@@ -136,7 +144,9 @@ public class AndSyncManager {
 		
 	}
 	
-	public <T> List<T> findAll(final Class<T> clazz) {
+	public <T> List<T> findAll(final Class<T> clazz, final AndSync.UpdateListener<T> listener) {
+		
+		addListener(listener);
 		
 		long milli = System.currentTimeMillis();
 
@@ -158,10 +168,8 @@ public class AndSyncManager {
 				// TODO: Remove time recording
 				Log.w("ANDSYNC_TIME", "-- [findAll REST] Elapsed Time: " + (System.currentTimeMillis() - beforeUpdate)/1000.0 + "s / #Objects: " + objs.size() + " --");
 				
-				if(objs.size() > 0) {
-					List<T> objects = new LazyList<T>(mCacheStorage, mCache, clazz);
-					mListeners.updateListener(clazz, objects);
-				}
+				List<T> objects = new LazyList<T>(mCacheStorage, mCache, clazz);
+				listener.onData(objects);
 
 			}
 		};
@@ -188,17 +196,23 @@ public class AndSyncManager {
 		
 	}
 	
-	public void onServerUpdate() {
-		mListeners.updateListener(null, null);
+	private void addListener(AndSync.UpdateListener<?> listener) {
+		for(WeakReference<AndSync.UpdateListener<?>> ref : mUpdateListener) {
+			if(ref.get() == listener) return;
+		}
+		mUpdateListener.add(new WeakReference<AndSync.UpdateListener<?>>(listener));
 	}
 	
-	public void registerListener(ObjectListener listener, Class<?>[] classes) {
-		mListeners.registerListener(listener, classes);
+	public void onServerUpdate() {
+		for(Iterator<WeakReference<AndSync.UpdateListener<?>>> iterator = mUpdateListener.iterator(); 
+				iterator.hasNext(); ) {
+			AndSync.UpdateListener<?> listener = iterator.next().get();
+			if(listener == null) {
+				iterator.remove();
+			} else {
+				listener.onUpdate();
+			}
+		}
 	}
-
-	public void removeListener(ObjectListener listener) {
-		mListeners.removeListener(listener);
-	}
-
-
+	
 }
