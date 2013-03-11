@@ -29,7 +29,7 @@ import java.util.concurrent.Executors;
 import static de.inovex.andsync.Constants.*;
 
 /**
- * The {@code ObjectManager} is the core of the client library. It takes care
+ * The {@code AndSyncManager} is the core of the client library. It takes care
  * to load and save Objects, using the LuceneCache and requesting objects from server
  * if needed.
  * 
@@ -39,9 +39,11 @@ import static de.inovex.andsync.Constants.*;
  * 
  * @author Tim Roes <tim.roes@inovex.de>
  */
-public class ObjectManager {
+public class AndSyncManager {
 	
 	private Config mConfig;
+	
+	private PushManager mPushManager;
 	
 	private StorageWrapper mCacheStorage;
 	private StorageWrapper mRestStorage;
@@ -52,13 +54,18 @@ public class ObjectManager {
 	private ExecutorService mExecutor = Executors.newCachedThreadPool();
 	
 	private ListenerHandler mListeners = new ListenerHandler();
-	
-	public ObjectManager(Config config) {
+		
+	public AndSyncManager(Config config) {
+		
+		Log.w("ANDSYNC", "Start service constructor!");
 		
 		if(config == null) 
 			throw new IllegalArgumentException("Config isn't allowed to be null.");
 		
 		this.mConfig = config;
+		this.mPushManager = new PushManager(config.getGcmKey());
+		mPushManager.init();
+		
 		this.mSharedStorageCache = new Storage.DefaultCache();
 		
 		mCache = null;
@@ -151,8 +158,10 @@ public class ObjectManager {
 				// TODO: Remove time recording
 				Log.w("ANDSYNC_TIME", "-- [findAll REST] Elapsed Time: " + (System.currentTimeMillis() - beforeUpdate)/1000.0 + "s / #Objects: " + objs.size() + " --");
 				
-				List<T> objects = new LazyList<T>(mCacheStorage, mCache, clazz);
-				mListeners.updateListener(clazz, objects);
+				if(objs.size() > 0) {
+					List<T> objects = new LazyList<T>(mCacheStorage, mCache, clazz);
+					mListeners.updateListener(clazz, objects);
+				}
 
 			}
 		};
@@ -179,6 +188,10 @@ public class ObjectManager {
 		
 	}
 	
+	public void onServerUpdate() {
+		mListeners.updateListener(null, null);
+	}
+	
 	public void registerListener(ObjectListener listener, Class<?>[] classes) {
 		mListeners.registerListener(listener, classes);
 	}
@@ -186,5 +199,6 @@ public class ObjectManager {
 	public void removeListener(ObjectListener listener) {
 		mListeners.removeListener(listener);
 	}
+
 
 }

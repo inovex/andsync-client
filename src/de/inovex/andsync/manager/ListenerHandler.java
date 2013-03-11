@@ -69,6 +69,7 @@ class ListenerHandler {
 			l.onUpdate(clazz, objects);
 		}
 		
+		if(clazz == null) return;
 		Collection<ObjectListener> list = listeners.get(clazz);
 		if(list != null)
 		for(ObjectListener l : list) {

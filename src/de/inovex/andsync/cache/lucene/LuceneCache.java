@@ -25,10 +25,10 @@ import java.util.Collection;
 import org.apache.lucene.codecs.lucene41.Lucene41Codec;
 import java.util.List;
 import com.mongodb.DBObject;
+import de.inovex.andsync.AndSync;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.analysis.Analyzer;
-import de.inovex.andsync.AndSyncApplication;
 import de.inovex.andsync.cache.Cache;
 import de.inovex.andsync.util.FileUtil;
 import java.io.File;
@@ -69,7 +69,7 @@ public class LuceneCache implements Cache {
 				mStore.close();
 			}
 			
-			File cacheDir = new File(AndSyncApplication.getAppContext().getExternalCacheDir(), LUCENE_CACHE_DIR);
+			File cacheDir = new File(AndSync.getContext().getExternalCacheDir(), LUCENE_CACHE_DIR);
 			if(!cacheDir.exists()) {
 				cacheDir.mkdir();
 			}

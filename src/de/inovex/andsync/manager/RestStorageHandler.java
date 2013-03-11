@@ -15,6 +15,7 @@
  */
 package de.inovex.andsync.manager;
 
+import de.inovex.andsync.AndSync;
 import android.content.Context;
 import android.content.SharedPreferences;
 import java.util.concurrent.ScheduledFuture;
@@ -26,7 +27,6 @@ import com.mongodb.BasicDBList;
 import de.inovex.andsync.cache.Cache;
 import com.mongodb.DBObject;
 import com.mongodb.DBRef;
-import de.inovex.andsync.AndSyncApplication;
 import de.inovex.andsync.cache.CacheDocument;
 import de.inovex.andsync.rest.RestClient;
 import de.inovex.andsync.rest.RestClient.RestResponse;
@@ -70,7 +70,7 @@ class RestStorageHandler implements Storage.DBHandler {
 		this.mCallCollector = new CallCollector();
 		this.mRest = new RepeatingRestClient(restClient);
 		this.mCache = cache;
-		this.mPrefs = AndSyncApplication.getAppContext().getSharedPreferences(
+		this.mPrefs = AndSync.getContext().getSharedPreferences(
 				RestStorageHandler.class.getName(), Context.MODE_PRIVATE);
 		untransmitted();
 	}

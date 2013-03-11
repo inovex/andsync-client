@@ -24,19 +24,26 @@ import java.net.URL;
  */
 public class Config {
 	
-	private URL mUrl;
+	private final URL mUrl;
+	private final String mGcmKey;
 	
 	private Config(Builder builder) {
 		this.mUrl = builder.mUrl;
+		this.mGcmKey = builder.mGcmKey;
 	}
 
 	public URL getUrl() {
 		return mUrl;
 	}
 	
+	public String getGcmKey() {
+		return mGcmKey;
+	}
+	
 	public static class Builder {
 		
 		private URL mUrl;
+		private String mGcmKey;
 		
 		public Builder(URL url) {
 			this.mUrl = url;
@@ -44,6 +51,11 @@ public class Config {
 		
 		public Builder(String url) throws MalformedURLException {
 			this.mUrl = new URL(url);
+		}
+		
+		public Builder gcmKey(String key) {
+			this.mGcmKey = key;
+			return this;
 		}
 			
 		public Config build() {
