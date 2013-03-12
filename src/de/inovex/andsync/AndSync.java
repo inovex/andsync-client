@@ -18,8 +18,8 @@ package de.inovex.andsync;
 import android.util.Log;
 import android.app.Application;
 import android.content.Context;
-import de.inovex.andsync.manager.ObjectListener;
 import de.inovex.andsync.manager.AndSyncManager;
+import java.lang.ref.WeakReference;
 import java.util.List;
 
 /**
@@ -89,6 +89,22 @@ public class AndSync {
 		sManager.saveMultiple(objects);
 	}
 
+	/**
+	 * 
+	 * <b>Attention:</b> Since most {@link UpdateListener} are linked to activities and might want
+	 * to change the UI, it could come to problems, when data is updated while the UI is already
+	 * destroyed. To prevent this, the framework does only save a {@link WeakReference} to the
+	 * {@code UpdateListener}. This means it can be cleaned up by the GC as soon as you don't hold
+	 * a reference to it anymore. So you need to hold a reference to the listener as long as you want
+	 * to have updates (most likely you will hold a reference in an object field). I.e. don't create
+	 * the {@code UpdateListener} as an anonymous object, it will be immediately free for garbage 
+	 * collection, and you won't get any data or updates.
+	 * 
+	 * @param <T>
+	 * @param clazz
+	 * @param listener
+	 * @return 
+	 */
 	public static <T> List<T> findAll(Class<T> clazz, UpdateListener<T> listener) {
 		Log.w("ANDSYNC", "findAll " + clazz.getName());
 		checkState();
@@ -100,6 +116,13 @@ public class AndSync {
 		sManager.delete(obj);
 	}
 	
+	/**
+	 * Gets notification when new data for a requested call is available or could be fetched from
+	 * server. Please pay attention about the lifespan of objects as mentioned in the documentation
+	 * of {@link #findAll(java.lang.Class, de.inovex.andsync.AndSync.UpdateListener)}.
+	 * 
+	 * @param <T> The type of data that was requested from the framework.
+	 */
 	public interface UpdateListener<T> {
 		
 		/**

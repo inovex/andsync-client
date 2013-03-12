@@ -15,6 +15,7 @@
  */
 package de.inovex.andsync.manager;
 
+import java.util.Map;
 import java.util.Iterator;
 import java.util.Set;
 import de.inovex.andsync.cache.Cache;
@@ -62,6 +63,9 @@ public class AndSyncManager {
 	 * method on its iterator.
 	 */
 	private Set<WeakReference<AndSync.UpdateListener<?>>> mUpdateListener;
+	
+	private Map<Class<?>,Set<WeakReference<AndSync.UpdateListener<?>>>> mListeners;
+	
 	
 	public AndSyncManager(Config config) {
 	
@@ -146,6 +150,7 @@ public class AndSyncManager {
 	
 	public <T> List<T> findAll(final Class<T> clazz, final AndSync.UpdateListener<T> listener) {
 		
+		
 		addListener(listener);
 		
 		long milli = System.currentTimeMillis();
@@ -204,13 +209,17 @@ public class AndSyncManager {
 	}
 	
 	public void onServerUpdate() {
+		int t = 0;
 		for(Iterator<WeakReference<AndSync.UpdateListener<?>>> iterator = mUpdateListener.iterator(); 
 				iterator.hasNext(); ) {
+			Log.w("ANDSYNC", "Update listener [" + (++t) + "]");
 			AndSync.UpdateListener<?> listener = iterator.next().get();
 			if(listener == null) {
 				iterator.remove();
+				Log.w("ANDSYNC", "Removed listener [" + (t) + "]");
 			} else {
 				listener.onUpdate();
+				Log.w("ANDSYNC", "Updated listener [" + (t) + "]");
 			}
 		}
 	}
