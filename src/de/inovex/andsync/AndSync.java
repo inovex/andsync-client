@@ -19,6 +19,7 @@ import android.util.Log;
 import android.app.Application;
 import android.content.Context;
 import de.inovex.andsync.manager.AndSyncManager;
+import de.inovex.andsync.manager.LazyList;
 import java.lang.ref.WeakReference;
 import java.util.List;
 
@@ -105,7 +106,7 @@ public class AndSync {
 	 * @param listener
 	 * @return 
 	 */
-	public static <T> List<T> findAll(Class<T> clazz, UpdateListener<T> listener) {
+	public static <T> LazyList<T> findAll(Class<T> clazz, UpdateListener<T> listener) {
 		Log.w("ANDSYNC", "findAll " + clazz.getName());
 		checkState();
 		return sManager.findAll(clazz, listener);
@@ -144,7 +145,7 @@ public class AndSync {
 		 *		This data is at the time of calling complete, so you don't need to merge this data with
 		 *		previously retrieved data.
 		 */
-		void onData(List<T> data);
+		void onData(LazyList<T> data);
 		
 		/**
 		 * Will be called by the framework when new data is available at the server.

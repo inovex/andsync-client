@@ -15,8 +15,6 @@
  */
 package de.inovex.andsync.manager;
 
-import java.util.Map;
-import java.util.Iterator;
 import java.util.Set;
 import de.inovex.andsync.cache.Cache;
 import de.inovex.andsync.Config;
@@ -28,7 +26,6 @@ import de.inovex.andsync.cache.lucene.LuceneCache;
 import de.inovex.andsync.rest.RestClient;
 import de.inovex.jmom.Storage;
 import java.lang.ref.WeakReference;
-import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.Executors;
 import static de.inovex.andsync.Constants.*;
@@ -54,31 +51,21 @@ public class AndSyncManager {
 	private StorageWrapper mRestStorage;
 	
 	private Cache mCache;
-	private Storage.Cache mSharedStorageCache;
+	private Storage.Cache mSharedStorageCache = new Storage.DefaultCache();
 	
 	private ExecutorService mExecutor = Executors.newCachedThreadPool();
 	
-	/**
-	 * The list of update listener. This must be instantiated with a type that supports the remove
-	 * method on its iterator.
-	 */
-	private Set<WeakReference<AndSync.UpdateListener<?>>> mUpdateListener;
-	
-	private Map<Class<?>,Set<WeakReference<AndSync.UpdateListener<?>>>> mListeners;
+	private ListenerManager mListeners = new ListenerManager();
 	
 	
 	public AndSyncManager(Config config) {
 	
 		if(config == null) 
 			throw new IllegalArgumentException("Config isn't allowed to be null.");
-		
-		this.mUpdateListener = new HashSet<WeakReference<AndSync.UpdateListener<?>>>();
-		
+			
 		this.mConfig = config;
 		this.mPushManager = new PushManager(config.getGcmKey());
 		mPushManager.init();
-		
-		this.mSharedStorageCache = new Storage.DefaultCache();
 		
 		mCache = null;
 		try {
@@ -148,15 +135,35 @@ public class AndSyncManager {
 		
 	}
 	
-	public <T> List<T> findAll(final Class<T> clazz, final AndSync.UpdateListener<T> listener) {
+	public <T> LazyList<T> findAll(final Class<T> clazz, final AndSync.UpdateListener<T> listener) {
 		
+		Log.w("ANDSYNC", "Entered findAll for class " + clazz.getName());
 		
-		addListener(listener);
+		// if already running some request, return thats request lazylist and add listener to be
+		// notified about the previous request finished (temporary list)
+		synchronized(mListeners.getLock(clazz)) {
+			
+			LazyList<T> list = mListeners.getRunningCall(clazz);
+			if(list == null) {
+				// No pending call, so we can execute our call
+				list = new LazyList<T>(mCacheStorage, mCache, clazz);
+				mListeners.addRunningCall(clazz, list);
+				mListeners.addUpdateListener(clazz, listener);
+			} else {
+				// There is a currently running call, so add this listener and return the list.
+				mListeners.addUpdateListener(clazz, listener);
+				Log.w("ANDSYNC", "FindAll already executing " + clazz.getName());
+				return list;
+			}
+			
+		}
+		
+		Log.w("ANDSYNC", "Do findAll call for class " + clazz.getName());
 		
 		long milli = System.currentTimeMillis();
 
 		// Create a new lazy list, that will be used to load the cache data in background
-		final List<T> findAll = new LazyList<T>(mCacheStorage, mCache, clazz);
+		final LazyList<T> findAll = new LazyList<T>(mCacheStorage, mCache, clazz);
 		
 		Log.w("ANDSYNC_TIME", " -- [findAll Cache] Elapsed Time: " + (System.currentTimeMillis() - milli)/1000.0 + "s / #Objects: " + findAll.size() + " --");
 		
@@ -173,8 +180,27 @@ public class AndSyncManager {
 				// TODO: Remove time recording
 				Log.w("ANDSYNC_TIME", "-- [findAll REST] Elapsed Time: " + (System.currentTimeMillis() - beforeUpdate)/1000.0 + "s / #Objects: " + objs.size() + " --");
 				
-				List<T> objects = new LazyList<T>(mCacheStorage, mCache, clazz);
-				listener.onData(objects);
+				synchronized(mListeners.getLock(clazz)) {
+					
+					LazyList<T> objects = new LazyList<T>(mCacheStorage, mCache, clazz);
+					
+					Set<WeakReference<AndSync.UpdateListener<T>>> listeners = mListeners.getCallListeners(clazz);
+					
+					// Inform all listeners (that haven't been GC'd yet) with the new data.
+					for(WeakReference<AndSync.UpdateListener<T>> listener : listeners) {
+						AndSync.UpdateListener<T> l = listener.get();
+						if(l != null) {
+							l.onData(objects);
+						}
+					}
+					
+					// Delete all listeners, since all have been informed.
+					listeners.clear();
+					// Clear lazylist from beginning, to mark this call as ended.
+					// The next call to findAll will result in another REST call being made.
+					mListeners.clearRunningCall(clazz);
+					
+				}
 
 			}
 		};
@@ -201,27 +227,8 @@ public class AndSyncManager {
 		
 	}
 	
-	private void addListener(AndSync.UpdateListener<?> listener) {
-		for(WeakReference<AndSync.UpdateListener<?>> ref : mUpdateListener) {
-			if(ref.get() == listener) return;
-		}
-		mUpdateListener.add(new WeakReference<AndSync.UpdateListener<?>>(listener));
-	}
-	
 	public void onServerUpdate() {
-		int t = 0;
-		for(Iterator<WeakReference<AndSync.UpdateListener<?>>> iterator = mUpdateListener.iterator(); 
-				iterator.hasNext(); ) {
-			Log.w("ANDSYNC", "Update listener [" + (++t) + "]");
-			AndSync.UpdateListener<?> listener = iterator.next().get();
-			if(listener == null) {
-				iterator.remove();
-				Log.w("ANDSYNC", "Removed listener [" + (t) + "]");
-			} else {
-				listener.onUpdate();
-				Log.w("ANDSYNC", "Updated listener [" + (t) + "]");
-			}
-		}
+		mListeners.notifyAllUpdateListeners();
 	}
 	
 }

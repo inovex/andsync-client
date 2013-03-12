@@ -34,7 +34,7 @@ public class GCMIntentService extends GCMBaseIntentService {
 	
 	private RestClient mRestClient = RestClient.create(AndSync.getConfig().getUrl());
 
-	private AndSyncManager mManager = AndSync.getManager();
+	private AndSyncManager mManager = AndSync.getManager();			
 	
 	/**
 	 * Update message has been received.

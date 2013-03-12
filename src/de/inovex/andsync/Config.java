@@ -26,10 +26,12 @@ public class Config {
 	
 	private final URL mUrl;
 	private final String mGcmKey;
+	private final boolean mCommitList;
 	
 	private Config(Builder builder) {
 		this.mUrl = builder.mUrl;
 		this.mGcmKey = builder.mGcmKey;
+		this.mCommitList = builder.mCommitList;
 	}
 
 	public URL getUrl() {
@@ -40,10 +42,15 @@ public class Config {
 		return mGcmKey;
 	}
 	
+	public boolean getDefaultAutoCommit() {
+		return mCommitList;
+	}
+	
 	public static class Builder {
 		
 		private URL mUrl;
 		private String mGcmKey;
+		private boolean mCommitList;
 		
 		public Builder(URL url) {
 			this.mUrl = url;
@@ -55,6 +62,11 @@ public class Config {
 		
 		public Builder gcmKey(String key) {
 			this.mGcmKey = key;
+			return this;
+		}
+		
+		public Builder defaultCommitList(boolean autoCommit) {
+			this.mCommitList = autoCommit;
 			return this;
 		}
 			

@@ -39,6 +39,8 @@ import org.bson.types.ObjectId;
  */
 public class LazyList<T> implements List<T> {
 
+	private boolean mAutoCommit;
+	
 	private SparseArray<T> mObjects;
 	private List<ObjectId> mIds;
 	
@@ -52,9 +54,11 @@ public class LazyList<T> implements List<T> {
 			new NamedThreadFactory("LazyList Preloader"));
 	
 	LazyList(StorageWrapper cacheStorage, Cache cache, Class<T> clazz) {
+	
 		mCacheStorage = cacheStorage;
 		mCache = cache;
 		mClazz = clazz;
+		mAutoCommit = AndSync.getConfig().getDefaultAutoCommit();
 		
 		// Load all ids into the id list
 		Collection<ObjectId> ids = mCache.getAllIds(clazz.getName());
@@ -71,6 +75,10 @@ public class LazyList<T> implements List<T> {
 		
 	}
 	
+	public synchronized void setAutoCommit(boolean autoCommit) {
+		mAutoCommit = autoCommit;
+	}
+	
 	public synchronized void add(int index, T obj) {
 		// Move all objects above index that should be included to their above position
 		for(int i = mIds.size(); i > index; i--) {
@@ -80,13 +88,13 @@ public class LazyList<T> implements List<T> {
 		mObjects.put(index, obj);
 		// Add null for that object to id list
 		mIds.add(index, null);
-		AndSync.save(obj);
+		if(mAutoCommit) AndSync.save(obj);
 	}
 
 	public synchronized boolean add(T obj) {
 		mObjects.put(mIds.size(), obj);
 		mIds.add(null);
-		AndSync.save(obj);
+		if(mAutoCommit) AndSync.save(obj);
 		return true;
 	}
 
@@ -117,7 +125,7 @@ public class LazyList<T> implements List<T> {
 			mIds.add(i, null);
 		}
 		
-		AndSync.saveMultiple(objs);
+		if(mAutoCommit) AndSync.saveMultiple(objs);
 		
 		return true;
 	
@@ -279,7 +287,7 @@ public class LazyList<T> implements List<T> {
 			mIds.remove(id);
 			mIdLocks.remove(id);
 			mObjects.remove(index);
-			AndSync.delete(obj);
+			if(mAutoCommit) AndSync.delete(obj);
 			return obj;
 		}
 	}
@@ -308,7 +316,7 @@ public class LazyList<T> implements List<T> {
 					mObjects.remove(size - 1);
 					ObjectId id = mIds.remove(i);
 					mIdLocks.remove(id);
-					AndSync.delete(obj);
+					if(mAutoCommit) AndSync.delete(obj);
 					return true;
 				}
 			}
@@ -336,7 +344,7 @@ public class LazyList<T> implements List<T> {
 	 * {@inheritDoc}
 	 */
 	public synchronized T set(int index, T obj) {
-		if(!contains(obj)) {
+		if(mAutoCommit && !contains(obj)) {
 			AndSync.save(obj);
 		}
 		mObjects.put(index, obj);
