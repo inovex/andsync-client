@@ -36,7 +36,7 @@ import static de.inovex.andsync.Constants.*;
  * if needed.
  * 
  * An instance of this object is used by the {@link AndSync} class, that solely serves as 
- * a {@code static} facade to this class. You shouldn't use this class directly, use {@link AndSync}
+ * a {@code static} facade to this class. You must not use this class directly, use {@link AndSync}
  * instead.
  * 
  * @author Tim Roes <tim.roes@inovex.de>
@@ -57,15 +57,17 @@ public class AndSyncManager {
 	
 	private ListenerManager mListeners = new ListenerManager();
 	
-	
 	public AndSyncManager(Config config) {
 	
 		if(config == null) 
 			throw new IllegalArgumentException("Config isn't allowed to be null.");
 			
 		this.mConfig = config;
-		this.mPushManager = new PushManager(config.getGcmKey());
-		mPushManager.init();
+		
+		if(config.getGcmKey() != null) {
+			this.mPushManager = new PushManager(config.getGcmKey());
+			mPushManager.init();
+		}
 		
 		mCache = null;
 		try {

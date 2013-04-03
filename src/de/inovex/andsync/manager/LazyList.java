@@ -15,6 +15,7 @@
  */
 package de.inovex.andsync.manager;
 
+import android.util.Log;
 import android.util.SparseArray;
 import de.inovex.andsync.AndSync;
 import de.inovex.andsync.cache.Cache;
@@ -145,6 +146,7 @@ public class LazyList<T> implements List<T> {
 		mObjects.clear();
 		mIds.clear();
 		mIdLocks.clear();
+		// TODO: Delete all objects from AndSync when autocommit is enabled.
 	}
 
 	/**
@@ -167,6 +169,9 @@ public class LazyList<T> implements List<T> {
 	 * 
 	 * This implementation pauses until the background thread has loaded the requested value from
 	 * the cache.
+	 * 
+	 * FIXME: If GCM message for deletion is faster than preloading, we will wait in this method
+	 *	and eternity for the objects to be loaded (that has already been removed).
 	 * 
 	 * @param index The zero-based index of the item.
 	 * @return The object at the given index.
@@ -329,6 +334,7 @@ public class LazyList<T> implements List<T> {
 	 */
 	public boolean removeAll(Collection<?> arg0) {
 		// TODO: Optional operation, should be implemented
+		// TODO: Delete all objects from AndSync
 		throw new UnsupportedOperationException("Not supported yet.");
 	}
 
@@ -402,25 +408,40 @@ public class LazyList<T> implements List<T> {
 			this.mCurrent = position - 1;
 		}
 		
+		/**
+		 * {@inheritDoc}
+		 */
 		private void checKForConcurrentModification() {
 			if(mInitialSize != size()) {
 				throw new ConcurrentModificationException();
 			}
 		}
 		
+		/**
+		 * {@inheritDoc}
+		 */
 		public void add(T obj) {
 			checKForConcurrentModification();
 			throw new UnsupportedOperationException("The iterator doesn't support that operation.");
 		}
 
+		/**
+		 * {@inheritDoc}
+		 */
 		public boolean hasNext() {
 			return mCurrent + 1 < LazyList.this.size();
 		}
 
+		/**
+		 * {@inheritDoc}
+		 */
 		public boolean hasPrevious() {
 			return mCurrent >= 0;
 		}
 
+		/**
+		 * {@inheritDoc}
+		 */
 		public T next() {
 			checKForConcurrentModification();
 			T res = get(mCurrent + 1);
@@ -428,10 +449,16 @@ public class LazyList<T> implements List<T> {
 			return res;
 		}
 
+		/**
+		 * {@inheritDoc}
+		 */
 		public int nextIndex() {
 			return Math.min(mCurrent + 1, LazyList.this.size());
 		}
 
+		/**
+		 * {@inheritDoc}
+		 */
 		public T previous() {
 			checKForConcurrentModification();
 			T res = get(mCurrent);
@@ -440,15 +467,24 @@ public class LazyList<T> implements List<T> {
 			return res;
 		}
 
+		/**
+		 * {@inheritDoc}
+		 */
 		public int previousIndex() {
 			return Math.max(mCurrent -1 , -1);
 		}
 
+		/**
+		 * {@inheritDoc}
+		 */
 		public void remove() {
 			checKForConcurrentModification();
 			throw new UnsupportedOperationException("The iterator doesn't support that operation.");
 		}
 
+		/**
+		 * {@inheritDoc}
+		 */
 		public void set(T obj) {
 			checKForConcurrentModification();
 			LazyList.this.set(mLastPosition, obj);

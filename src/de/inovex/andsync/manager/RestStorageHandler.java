@@ -366,12 +366,14 @@ class RestStorageHandler implements Storage.DBHandler {
 
 		/**
 		 * Limit of calls that get cached for one collection before sending a REST request.
+		 * TODO: Make configurable
 		 */
 		private final static int CALL_COLLECT_LIMIT = 100;
 		
 		/**
 		 * Time limit after which a REST call will be made (even when less than {@link #CALL_COLLECT_LIMIT}
 		 * calls are pending.
+		 * TODO: Make configurable
 		 */
 		private final static int CALL_COLLECT_TIME_LIMIT = 3;
 		

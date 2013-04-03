@@ -34,7 +34,8 @@ public class GCMIntentService extends GCMBaseIntentService {
 	
 	private RestClient mRestClient = RestClient.create(AndSync.getConfig().getUrl());
 
-	private AndSyncManager mManager = AndSync.getManager();			
+	private AndSyncManager mManager = AndSync.getManager();	
+	private boolean mIsEnabled = AndSync.getConfig().getGcmKey() != null;
 	
 	/**
 	 * Update message has been received.
@@ -44,7 +45,8 @@ public class GCMIntentService extends GCMBaseIntentService {
 	 */
 	@Override
 	protected void onMessage(Context cntxt, Intent intent) {
-		Log.w(LOG_TAG, "Update message received.");
+		if(!mIsEnabled) return;
+		// TODO: NOT in UI thread
 		mManager.onServerUpdate();
 	}
 
@@ -62,6 +64,7 @@ public class GCMIntentService extends GCMBaseIntentService {
 	 */
 	@Override
 	protected void onRegistered(Context cntxt, String id) {
+		if(!mIsEnabled) return;
 		try {
 			mRestClient.put(null, Constants.REST_CONTROL_PATH, id);
 		} catch (RestException ex) {
@@ -70,8 +73,16 @@ public class GCMIntentService extends GCMBaseIntentService {
 		}
 	}
 
+	/**
+	 * Called from GCM server, when the app unregistered. (Either it has requested it or the server
+	 * decided to unregister it.) This method calls the AndSync server for unregistration.
+	 * 
+	 * @param cntxt The context.
+	 * @param id The registration id that unregistered.
+	 */
 	@Override
 	protected void onUnregistered(Context cntxt, String id) {
+		if(!mIsEnabled) return;
 		try {
 			mRestClient.delete(null, Constants.REST_CONTROL_PATH, id);
 		} catch(RestException ex) {

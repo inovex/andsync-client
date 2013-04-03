@@ -57,7 +57,7 @@ class PushManager {
 		} else {
 			Log.i(LOG_TAG, "Already registered for GCM messages " + regId);
 			// TODO: check if not registered at server yet.
-			//GCMRegistrar.register(mContext, mProjectId);
+			GCMRegistrar.register(mContext, mProjectId);
 		}
 	}
 	

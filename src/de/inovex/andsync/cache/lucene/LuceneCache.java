@@ -48,6 +48,9 @@ import static de.inovex.andsync.Constants.*;
 
 /**
  * Implements {@link Cache} using Apache Lucene to store the objects.
+ * Each cache document is implemented as a {@link LuceneCacheDocument} and stores the {@link DBObject}
+ * as a byte array representing it in BSON format. Besides it stores the collection, ObjectId and
+ * transmitted state.
  * 
  * @author Tim Roes <tim.roes@inovex.de>
  */
@@ -62,6 +65,8 @@ public class LuceneCache implements Cache {
 		
 		boolean cacheCreated = false;
 		boolean retried = false;
+		// Try to create the cache. If it got corrupted delete it and try again.
+		// TODO: Code should be improved here.
 		while(!cacheCreated) {
 			
 			// Try closing the store if perhaps opened from last try.
@@ -137,11 +142,24 @@ public class LuceneCache implements Cache {
 		}
 	}
 	
+	/**
+	 * Returns the maximum search limit for a query. This is the number of documents in the searcher
+	 * or 1 if no document exists (0 would throw an exception in the search method).
+	 * 
+	 * @param searcher The {@link IndexSearcher} to get the search limit for.
+	 * @return 
+	 */
 	private int getSearchLimit(IndexSearcher searcher) {
 		int numDocs = searcher.getIndexReader().numDocs();
 		return numDocs > 0 ? numDocs : 1;
 	}
 	
+	/**
+	 * Returns the number of documents in a given {@link IndexSearcher}.
+	 * 
+	 * @param searcher The {@link IndexSearcher}.
+	 * @return Number of documents in {@code searcher}.
+	 */
 	private int getNumDocs(IndexSearcher searcher) {
 		return searcher.getIndexReader().numDocs();
 	}
@@ -381,6 +399,13 @@ public class LuceneCache implements Cache {
 		}
 	}
 	
+	/**
+	 * Returns the {@link LuceneCacheDocument} with the specified {@link ObjectId} (or {@code null}
+	 * if the document couldn't be found).
+	 * 
+	 * @param id The id of the object to return.
+	 * @return The cache document with that id, or {@code null}.
+	 */
 	private LuceneCacheDocument getDocById(ObjectId id) throws IOException {
 		IndexSearcher searcher = null;
 		try {
@@ -397,6 +422,13 @@ public class LuceneCache implements Cache {
 		}
 	}
 	
+	/**
+	 * Converts an array of {@link ScoreDoc} into a collection of {@link CacheDocument CacheDocuments}.
+	 * 
+	 * @param searcher The {@link IndexSearcher} used to retrieve the documents.
+	 * @param scoreDocs The score docs, that should be converted.
+	 * @return A collection containing the CacheDocuments related to the given {@code scoreDocs}.
+	 */
 	private Collection<CacheDocument> convertScoreDocs(IndexSearcher searcher, ScoreDoc[] scoreDocs) throws IOException {
 		
 		List<CacheDocument> dbos = new ArrayList<CacheDocument>(scoreDocs.length);

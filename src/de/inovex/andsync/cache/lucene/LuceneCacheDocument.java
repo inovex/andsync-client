@@ -40,7 +40,10 @@ import org.apache.lucene.util.BytesRef;
 import org.bson.types.ObjectId;
 
 /**
- *
+ * Represents a cache document in the {@link LuceneCache}. It reads information from a {@link Document} 
+ * (Lucene document). The BSON of the {@link DBObject} and each direct accessible field (class name,
+ * ObjectId, etc.) is stored in one field of the Lucene document.
+ * 
  * @author Tim Roes <tim.roes@inovex.de>
  */
 public class LuceneCacheDocument implements Iterable<IndexableField>, CacheDocument {
@@ -60,6 +63,7 @@ public class LuceneCacheDocument implements Iterable<IndexableField>, CacheDocum
 	 * required fields exist in the document an {@link IllegalArgumentException} will be thrown.
 	 * 
 	 * @param doc The lucene document from which to create a {@code LuceneCacheDocument}.
+	 * @throws IllegalArgumentException will be thrown when a required field is missing.
 	 */
 	public LuceneCacheDocument(Document doc) {
 		
@@ -92,6 +96,7 @@ public class LuceneCacheDocument implements Iterable<IndexableField>, CacheDocum
 				TransmittedState.fromNumValue(transmitted.numericValue().intValue()));
 		
 	}
+	
 	
 	public LuceneCacheDocument(String collection, DBObject object, TransmittedState transmitted) {
 		
