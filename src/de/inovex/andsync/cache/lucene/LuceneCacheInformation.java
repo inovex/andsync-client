@@ -21,13 +21,21 @@ import de.inovex.andsync.AndSync;
 import de.inovex.andsync.cache.CacheInformation;
 
 /**
- *
+ * Implements {@link CacheInformation} by using Android's {@link SharedPreferences} to store the
+ * last modification times. This will be used by {@link LuceneCache}.
+ * 
+ * @see LuceneCache
+ * 
  * @author Tim Roes <tim.roes@inovex.de>
  */
 final class LuceneCacheInformation implements CacheInformation  {
 
 	private final SharedPreferences mPrefs;
 	
+	/**
+	 * Creates new instance of {@link LuceneCacheInformation} using the class name of {@link CacheInformation}
+	 * as the name of the {@link SharedPreferences}.
+	 */
 	public LuceneCacheInformation() {
 		mPrefs = AndSync.getContext()
 				.getSharedPreferences(CacheInformation.class.getName(), Context.MODE_PRIVATE);
