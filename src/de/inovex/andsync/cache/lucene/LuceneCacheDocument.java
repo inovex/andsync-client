@@ -46,7 +46,7 @@ import org.bson.types.ObjectId;
  * 
  * @author Tim Roes <tim.roes@inovex.de>
  */
-public class LuceneCacheDocument implements Iterable<IndexableField>, CacheDocument {
+final class LuceneCacheDocument implements Iterable<IndexableField>, CacheDocument {
 	
 	private static final String KEY_ID = "ID";
 	private static final String DATA_ID = "DATA";

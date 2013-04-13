@@ -27,7 +27,8 @@ import java.net.URLEncoder;
 import static de.inovex.andsync.Constants.*;
 
 /**
- *
+ * Implementation of {@link RestClient} using {@link HttpURLConnection} to send requests.
+ * 
  * @author Tim Roes <tim.roes@inovex.de>
  */
 class HttpUrlConnectionRestClient extends RestClient {	

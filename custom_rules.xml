@@ -10,8 +10,10 @@
 		<ant dir="../jMOM" target="jar"/>
 		<move file="../jMOM/dist/jMOM.jar" todir="libs"/>
 		
+		<!--
 		<echo level="info">Compile and copy Apache Lucene...</echo>
 		<ant dir="../lucene-solr" target="compile"/>
+		-->
 		<copy file="../lucene-solr/lucene/build/core/lucene-core-${lucene.version}-SNAPSHOT.jar" todir="libs"/>
 		<copy file="../lucene-solr/lucene/build/analysis/common/lucene-analyzers-common-${lucene.version}-SNAPSHOT.jar" todir="libs"/>
 	</target>

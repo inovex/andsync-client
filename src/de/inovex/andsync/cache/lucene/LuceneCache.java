@@ -15,6 +15,7 @@
  */
 package de.inovex.andsync.cache.lucene;
 
+import de.inovex.andsync.cache.CacheInformation;
 import org.apache.lucene.search.Query;
 import de.inovex.andsync.cache.CacheDocument;
 import android.util.Log;
@@ -52,21 +53,27 @@ import static de.inovex.andsync.Constants.*;
  * as a byte array representing it in BSON format. Besides it stores the collection, ObjectId and
  * transmitted state.
  * 
+ * TODO: Cache should store a version number. So if implementation of AndSync changes, the cache
+ *		gets completely invalidated, since its implementation might have changed.
+ * 
  * @author Tim Roes <tim.roes@inovex.de>
  */
 public class LuceneCache implements Cache {
 	
-	private static final String LUCENE_CACHE_DIR = "andsync";
+	private static final String LUCENE_CACHE_DIR = "de.inovex.andsync";
 	
 	private Directory mStore;
 	private IndexWriter mWriter;
+	
+	private final LuceneCacheInformation mInformation = new LuceneCacheInformation();
 	
 	public LuceneCache() throws IOException {
 		
 		boolean cacheCreated = false;
 		boolean retried = false;
 		// Try to create the cache. If it got corrupted delete it and try again.
-		// TODO: Code should be improved here.
+		// TODO: The creation of the cache and instantiation of the objects should be improved somehow.
+		//		This code doesn't look very good and wouldn't suffer from some cleanup.
 		while(!cacheCreated) {
 			
 			// Try closing the store if perhaps opened from last try.
@@ -76,6 +83,9 @@ public class LuceneCache implements Cache {
 			
 			File cacheDir = new File(AndSync.getContext().getExternalCacheDir(), LUCENE_CACHE_DIR);
 			if(!cacheDir.exists()) {
+				// Reset all last modified times. There was no cache directory yet, but it might
+				// also have been deleted. In that case we also need to reset the times.
+				mInformation.clearLastModified();
 				cacheDir.mkdir();
 			}
 			
@@ -91,6 +101,10 @@ public class LuceneCache implements Cache {
 				mWriter = new IndexWriter(mStore, config);
 				mWriter.commit();
 				
+				// Try to get a searcher. If the cache is corrupted this will throw an IOException,
+				// what will result in the catch block below to reset the cache.
+				getSearcher();
+				
 				cacheCreated = true;
 				
 			} catch(IOException ex) {
@@ -98,6 +112,8 @@ public class LuceneCache implements Cache {
 				Log.w(LOG_TAG, String.format("Cache dir was corrupted, reseting cache. [Caused by: %s]", ex.getMessage()));
 				if(!retried) {
 					FileUtil.delete(cacheDir);
+					// Reset all last modified times. The cache has been reseted, so these times got invalid.
+					mInformation.clearLastModified();
 					retried = true;
 				} else {
 					throw new IOException("Cannot create cache dir.", ex);
@@ -443,6 +459,13 @@ public class LuceneCache implements Cache {
 	
 	private LuceneCacheDocument getCacheDoc(IndexSearcher searcher, ScoreDoc doc) throws IOException {
 		return new LuceneCacheDocument(searcher.doc(doc.doc));
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public CacheInformation getCacheInformation() {
+		return mInformation;
 	}
 	
 }

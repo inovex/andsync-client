@@ -89,7 +89,8 @@ class CacheStorageHandler implements Storage.DBHandler {
 	 */
 	@Override
 	public DBObject onFetchRef(DBRef dbref) {
-		if(dbref == null) return null;
+		//if(dbref == null) return null;
+		assert dbref != null;
 		CacheDocument cd = mCache.getById((ObjectId)dbref.getId());
 		if(cd == null) return null;
 		return cd.getDBObject();

@@ -28,6 +28,21 @@ import org.bson.types.ObjectId;
  * @author Tim Roes <tim.roes@inovex.de>
  */
 public class CacheMock implements Cache {
+	
+	/**
+	 * Empty implementation of {@link CacheInformation} to be returned by {@link #getCacheInformation()}.
+	 */
+	private CacheInformation mInformation = new CacheInformation() {
+
+		public long getLastModified(String collection) {
+			return 0L;
+		}
+
+		public void setLastModified(String collection, long timestamp) { }
+
+		public void clearLastModified() { }
+		
+	};
 
 	/**
 	 * {@inheritDoc}
@@ -118,6 +133,13 @@ public class CacheMock implements Cache {
 	 * {@inheritDoc}
 	 */
 	@Override
-	public void commit() { }	
+	public void commit() { }
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public CacheInformation getCacheInformation() {
+		return mInformation;
+	}
 	
 }

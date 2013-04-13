@@ -156,4 +156,13 @@ public interface Cache {
 	 */
 	public void commit();
 	
+	/**
+	 * Returns an instance of the {@link CacheInformation} of this cache. Calling this method multiple
+	 * times on the same {@link Cache} must always return the same {@link CacheInformation}. So the
+	 * returned object can be cached over the lifetime of the {@link Cache} instance.
+	 * 
+	 * @return {@link CacheInformation} of this cache.
+	 */
+	public CacheInformation getCacheInformation();
+	
 }

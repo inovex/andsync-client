@@ -15,7 +15,6 @@
  */
 package de.inovex.andsync.manager;
 
-import android.util.Log;
 import android.util.SparseArray;
 import de.inovex.andsync.AndSync;
 import de.inovex.andsync.cache.Cache;
