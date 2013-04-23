@@ -1,20 +1,34 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project>
 	<target name="-pre-compile">
+            
+            <!--
+                This file is only needed if you want to contribute to AndSync.
+                You don't need to make any modifications, if you just want to use
+                this framework for synchronization.
+                See https://github.com/inovex/AndSync/wiki/Development
+            -->
 		
-		<echo level="info">Compile and copy andsync-commons.jar...</echo>
-		<ant dir="../andsync-commons" target="jar"/>
-		<move file="../andsync-commons/dist/andsync-commons.jar" todir="libs"/>
+            <echo level="info">Compile and copy andsync-commons.jar...</echo>
+            <ant dir="../andsync-commons" target="jar"/>
+            <move file="../andsync-commons/dist/andsync-commons.jar" todir="libs"/>
 		
-		<echo level="info">Compile and copy jMOM.jar...</echo>
-		<ant dir="../jMOM" target="jar"/>
-		<move file="../jMOM/dist/jMOM.jar" todir="libs"/>
-		
-		<!--
-		<echo level="info">Compile and copy Apache Lucene...</echo>
-		<ant dir="../lucene-solr" target="compile"/>
-		-->
-		<copy file="../lucene-solr/lucene/build/core/lucene-core-${lucene.version}-SNAPSHOT.jar" todir="libs"/>
-		<copy file="../lucene-solr/lucene/build/analysis/common/lucene-analyzers-common-${lucene.version}-SNAPSHOT.jar" todir="libs"/>
+            <!-- Uncomment this, if you modify the jMOM component.
+
+            <echo level="info">Compile and copy jMOM.jar...</echo>
+            <ant dir="../jMOM" target="jar"/>
+            <move file="../jMOM/dist/jMOM.jar" todir="libs"/>
+
+            -->
+
+            <!-- Uncomment this, if you modify the Apache Lucene component.
+
+            <echo level="info">Compile and copy Apache Lucene...</echo>
+            <ant dir="../lucene-solr" target="compile"/>
+            <copy file="../lucene-solr/lucene/build/core/lucene-core-${lucene.version}-SNAPSHOT.jar" todir="libs"/>
+            <copy file="../lucene-solr/lucene/build/analysis/common/lucene-analyzers-common-${lucene.version}-SNAPSHOT.jar" todir="libs"/>
+
+            -->
+                
 	</target>
 </project>

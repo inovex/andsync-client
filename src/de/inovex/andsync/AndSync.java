@@ -179,7 +179,7 @@ public class AndSync {
 	}
 
 	/**
-	 * Returns a list of all objects for the given {@link Clazz}. The order of the objects in this
+	 * Returns a list of all objects for the given {@link Class}. The order of the objects in this
 	 * list is not guaranteed to have any special order.
 	 * <p>
 	 * This method will return a {@link LazyList} with all cached objects and return this. The
@@ -255,7 +255,7 @@ public class AndSync {
 		 *		This data is at the time of calling complete, so you don't need to merge this data with
 		 *		previously retrieved data.
 		 */
-		void onData(LazyList<T> data);
+		void onDataReceived(LazyList<T> data);
 		
 		/**
 		 * Will be called by the framework when new data is available at the server.
@@ -264,7 +264,7 @@ public class AndSync {
 		 * So the framework will just collect the new data and pass it the the same {@link #onData(java.util.List)}
 		 * method, that anyway needs to handle new data.
 		 */
-		void onUpdate();
+		void onDataAvailable();
 		
 	}
 }

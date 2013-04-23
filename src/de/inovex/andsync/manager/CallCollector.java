@@ -15,14 +15,15 @@
  */
 package de.inovex.andsync.manager;
 
-import de.inovex.andsync.util.Base64;
-import de.inovex.andsync.rest.RepeatingRestClient;
-import de.inovex.andsync.cache.Cache;
 import android.util.Log;
 import com.mongodb.BasicDBList;
 import com.mongodb.BasicDBObject;
 import com.mongodb.DBObject;
+import static de.inovex.andsync.Constants.*;
+import de.inovex.andsync.cache.Cache;
+import de.inovex.andsync.rest.RepeatingRestClient;
 import de.inovex.andsync.rest.RestClient.RestResponse;
+import de.inovex.andsync.util.Base64;
 import de.inovex.andsync.util.BsonConverter;
 import java.util.Collection;
 import java.util.Collections;
@@ -38,7 +39,6 @@ import java.util.concurrent.TimeUnit;
 import org.apache.lucene.util.NamedThreadFactory;
 import org.bson.types.BasicBSONList;
 import org.bson.types.ObjectId;
-import static de.inovex.andsync.Constants.*;
 
 /**
  * Collects different calls to the REST interface and try to minimize the required HTTP connections,

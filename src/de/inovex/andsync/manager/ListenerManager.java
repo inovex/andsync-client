@@ -101,7 +101,7 @@ class ListenerManager {
 				iterator.remove();
 				Log.w("ANDSYNC", "Removed listener [" + (t) + "]");
 			} else {
-				listener.onUpdate();
+				listener.onDataAvailable();
 				Log.w("ANDSYNC", "Updated listener [" + (t) + "]");
 			}
 		}

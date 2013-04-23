@@ -15,20 +15,20 @@
  */
 package de.inovex.andsync.manager;
 
-import java.util.Set;
-import de.inovex.andsync.cache.Cache;
-import de.inovex.andsync.Config;
-import java.util.concurrent.ExecutorService;
 import android.util.Log;
 import de.inovex.andsync.AndSync;
+import de.inovex.andsync.Config;
+import static de.inovex.andsync.Constants.*;
+import de.inovex.andsync.cache.Cache;
 import de.inovex.andsync.cache.CacheMock;
 import de.inovex.andsync.cache.lucene.LuceneCache;
 import de.inovex.andsync.rest.RestClient;
 import de.inovex.jmom.Storage;
 import java.lang.ref.WeakReference;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import static de.inovex.andsync.Constants.*;
 
 /**
  * The {@code AndSyncManager} is the core of the client library. It takes care
@@ -139,8 +139,6 @@ public class AndSyncManager {
 	
 	public <T> LazyList<T> findAll(final Class<T> clazz, final AndSync.UpdateListener<T> listener) {
 		
-		Log.w("ANDSYNC", "Entered findAll for class " + clazz.getName());
-		
 		// if already running some request, return thats request lazylist and add listener to be
 		// notified about the previous request finished (temporary list)
 		synchronized(mListeners.getLock(clazz)) {
@@ -154,20 +152,15 @@ public class AndSyncManager {
 			} else {
 				// There is a currently running call, so add this listener and return the list.
 				mListeners.addUpdateListener(clazz, listener);
-				Log.w("ANDSYNC", "FindAll already executing " + clazz.getName());
 				return list;
 			}
 			
 		}
 		
-		Log.w("ANDSYNC", "Do findAll call for class " + clazz.getName());
-		
 		long milli = System.currentTimeMillis();
 
 		// Create a new lazy list, that will be used to load the cache data in background
 		final LazyList<T> findAll = new LazyList<T>(mCacheStorage, mCache, clazz);
-		
-		Log.w("ANDSYNC_TIME", " -- [findAll Cache] Elapsed Time: " + (System.currentTimeMillis() - milli)/1000.0 + "s / #Objects: " + findAll.size() + " --");
 		
 		Runnable r = new Runnable() {
 			public void run() {
@@ -179,9 +172,6 @@ public class AndSyncManager {
 				// Commit cache changes since we have not all objects from that fetch
 				mCache.commit();
 				
-				// TODO: Remove time recording
-				Log.w("ANDSYNC_TIME", "-- [findAll REST] Elapsed Time: " + (System.currentTimeMillis() - beforeUpdate)/1000.0 + "s / #Objects: " + objs.size() + " --");
-				
 				synchronized(mListeners.getLock(clazz)) {
 					
 					LazyList<T> objects = new LazyList<T>(mCacheStorage, mCache, clazz);
@@ -192,7 +182,7 @@ public class AndSyncManager {
 					for(WeakReference<AndSync.UpdateListener<T>> listener : listeners) {
 						AndSync.UpdateListener<T> l = listener.get();
 						if(l != null) {
-							l.onData(objects);
+							l.onDataReceived(objects);
 						}
 					}
 					
